@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Argenx</title>
+  <meta name="theme-color" content="#3949ab">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Argenx">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Argenx</h1>
+    <span id="mode" class="badge" hidden>Mode démo</span>
+    <select id="choix-mois" aria-label="Mois"></select>
+  </header>
+
+  <main>
+    <section id="connexion">
+      <h2>Connexion</h2>
+      <form id="form-connexion" class="carte">
+        <label>Mot de passe
+          <input name="motDePasse" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">Entrer</button>
+        <p class="message" role="status"></p>
+      </form>
+    </section>
+
+    <section id="mois">
+      <p id="bandeau-exemple" class="carte bandeau" hidden>Ce sont des <strong>opérations d'exemple fictives</strong>. Elles disparaissent dès ton premier import (onglet Importer).</p>
+      <div id="chiffres" class="carte chiffres"></div>
+      <div class="carte">
+        <h3>Dépenses par catégorie</h3>
+        <div class="graphe rond"><canvas id="g-categories" role="img" aria-label="Répartition des dépenses par catégorie"></canvas></div>
+        <ul id="liste-categories" class="liste"></ul>
+      </div>
+      <div class="carte">
+        <h3>Entrées et sorties du mois</h3>
+        <div class="graphe bas"><canvas id="g-entrees" role="img" aria-label="Entrées comparées aux sorties"></canvas></div>
+      </div>
+      <div class="carte">
+        <h3>Sur 12 mois</h3>
+        <div class="graphe"><canvas id="g-evolution" role="img" aria-label="Entrées et sorties des 12 derniers mois"></canvas></div>
+      </div>
+      <div class="carte">
+        <h3>Top 10 des commerçants</h3>
+        <ol id="top" class="liste"></ol>
+      </div>
+    </section>
+
+    <section id="analyses">
+      <h2>Analyses</h2>
+      <h3>Budgets du mois</h3>
+      <div id="budgets" class="carte"></div>
+      <h3>Abonnements repérés</h3>
+      <div id="abonnements" class="carte"></div>
+      <h3>Par rapport au mois précédent</h3>
+      <div id="comparaison" class="carte"></div>
+      <h3>Dépenses inhabituelles</h3>
+      <div id="inhabituelles" class="carte"></div>
+      <p class="aide">Ces chiffres décrivent tes dépenses ; ce ne sont pas des conseils financiers.</p>
+    </section>
+
+    <section id="operations">
+      <h2>Opérations</h2>
+      <input id="recherche" type="search" placeholder="Chercher (Lidl, Uber…)" aria-label="Chercher une opération">
+      <p class="aide">Change la catégorie d'une opération si elle est mal classée : l'appli te proposera d'en faire une règle.</p>
+      <ul id="liste-operations" class="liste"></ul>
+    </section>
+
+    <section id="importer">
+      <h2>Importer un relevé Revolut</h2>
+      <form id="form-import" class="carte">
+        <label>Fichier CSV exporté depuis Revolut
+          <input name="fichier" type="file" accept=".csv,text/csv" required>
+        </label>
+        <button type="submit">Importer</button>
+        <p class="message" role="status"></p>
+      </form>
+      <div class="carte">
+        <p class="aide"><strong>Exporter depuis l'appli Revolut :</strong> onglet Accueil → touche ton compte en euros → <em>…</em> (ou <em>Relevé</em>) → <strong>Relevé</strong> → format <strong>Excel / CSV</strong> → choisis la période → <strong>Générer</strong>, puis enregistre le fichier.</p>
+        <p class="aide">Tu peux réimporter une période qui chevauche la précédente : les opérations déjà connues sont ignorées.</p>
+      </div>
+      <button id="effacer-exemple" class="secondaire" hidden>Effacer les opérations d'exemple</button>
+    </section>
+
+    <section id="reglages">
+      <h2>Réglages</h2>
+      <h3>Budget mensuel par catégorie</h3>
+      <form id="form-budgets" class="carte">
+        <div id="champs-budgets" class="deux"></div>
+        <button type="submit">Enregistrer les budgets</button>
+        <p class="message" role="status"></p>
+      </form>
+      <h3>Mes règles de classement</h3>
+      <ul id="liste-regles" class="liste"></ul>
+      <h3>Notion</h3>
+      <div class="carte">
+        <p class="aide" id="aide-notion"></p>
+        <button id="envoyer-notion">Envoyer le mois vers Notion</button>
+        <p class="message" id="etat-notion" role="status"></p>
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <a href="#mois">📊<span>Mois</span></a>
+    <a href="#analyses">🔍<span>Analyses</span></a>
+    <a href="#operations">📋<span>Opérations</span></a>
+    <a href="#importer">⬆️<span>Importer</span></a>
+    <a href="#reglages">⚙️<span>Réglages</span></a>
+  </nav>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

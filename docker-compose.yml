@@ -1,0 +1,34 @@
+# À coller dans Container Manager → Projet → Créer (voir docs/MISE-EN-LIGNE.md).
+# Au démarrage : clone ou met à jour le dépôt GitHub, installe et lance le serveur.
+# Pour déployer une nouvelle version : pousser sur GitHub, puis redémarrer le projet.
+# Les opérations sont gardées dans /docker/argenx/app/data (jamais envoyées sur GitHub).
+services:
+  argenx:
+    image: node:20-alpine
+    container_name: argenx
+    restart: unless-stopped
+    ports:
+      - "3012:3012"
+    environment:
+      - PORT=3012
+      - TZ=Europe/Paris
+      # OBLIGATOIRE : mot de passe demandé une fois sur chaque téléphone.
+      # Vide = l'appli refuse d'écouter sur le réseau (elle sera injoignable).
+      - APP_PASSWORD=
+      # Jeton de l'intégration Notion (vide = mode démo, pas d'envoi vers Notion)
+      - NOTION_TOKEN=
+      # Lien ou identifiant de la page Notion qui accueille la base « Résumé mensuel »
+      - NOTION_PAGE_ID=
+    volumes:
+      - ./app:/app
+    working_dir: /app
+    command: >
+      sh -c "apk add --no-cache git &&
+             git config --global --add safe.directory /app &&
+             if [ -d /app/.git ]; then
+               git fetch --depth 1 origin main && git reset --hard FETCH_HEAD;
+             else
+               git clone --depth 1 https://github.com/Kaloomc/Argenx.git /app;
+             fi &&
+             npm ci --omit=dev &&
+             npm start"
