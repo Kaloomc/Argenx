@@ -94,6 +94,12 @@ button.secondaire { background: transparent; color: var(--rouge); border: 1px so
 .chiffres > div { display: grid; }
 .chiffres strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
 .chiffres small { font-size: .75rem; }
+#budget-mois p { margin: 0; }
+.ligne-budget { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.ligne-budget > div { display: grid; }
+.gros { font-size: 2rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+li.annulee .cout { text-decoration: line-through; color: var(--doux); }
+.rembourse { flex-basis: 100%; font-size: .8rem; color: var(--doux); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .barre { height: 8px; background: var(--accent-doux); border-radius: 99px; overflow: hidden; flex-basis: 100%; }
 .barre div { height: 100%; background: var(--accent); border-radius: 99px; }
 .barre div.depasse { background: var(--rouge); }

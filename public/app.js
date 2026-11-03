@@ -99,12 +99,11 @@ const infobulle = { callbacks: { label: (c) => ` ${c.dataset.label || c.label} :
 
 function dessiner() {
   const t = tableau;
-  const solde = Math.round((t.entrees - t.sorties) * 100) / 100;
   $('#chiffres').innerHTML = `
     <div><small>Entrées</small><strong>${euros(t.entrees)}</strong></div>
     <div><small>Dépenses</small><strong>${euros(t.sorties)}</strong></div>
-    <div><small>Mis de côté</small><strong>${euros(t.epargne)}</strong></div>
-    <div><small>Reste</small><strong class="${solde < 0 ? 'rouge' : ''}">${euros(solde)}</strong></div>`;
+    <div><small>Mis de côté</small><strong>${euros(t.epargne)}</strong></div>`;
+  afficherBudget();
 
   if (!window.Chart) {
     $('#liste-categories').innerHTML = '<li class="vide">Graphiques indisponibles sans connexion Internet.</li>';
@@ -165,6 +164,38 @@ function dessiner() {
     ? t.top.map((c) => `<li><span class="nom">${esc(c.nom)} <small>${esc(c.categorie)} · ${c.nb} fois</small></span><span class="cout">${euros(c.montant)}</span></li>`).join('')
     : '<li class="vide">Rien ce mois-ci.</li>';
 }
+// Carte « Budget du mois » : ce qui reste, par jour, et où mène le rythme actuel.
+function afficherBudget() {
+  const r = tableau.rythme;
+  const el = $('#budget-mois');
+  if (!r.budget) {
+    el.innerHTML = '<p class="vide">Fixe ton budget du mois dans ⚙️ Réglages pour savoir combien il te reste.</p>';
+    return;
+  }
+  const lignes = [`
+    <div class="ligne-budget">
+      <div><small>Reste à dépenser</small><strong class="gros ${r.reste < 0 ? 'rouge' : ''}">${euros(r.reste)}</strong></div>
+      <small>${euros(r.depense)} dépensés sur ${euros(r.budget)}</small>
+    </div>${barre(r.depense, r.budget)}`];
+  const aVenir = r.aVenir.map((a) => `${esc(a.nom)} ${euros(a.montant)} vers le ${Number(a.prochain.slice(8, 10))}`).join(', ');
+  if (r.enCours && r.reste < 0) {
+    lignes.push(`<p class="rouge">Budget dépassé de ${euros(-r.reste)}, et il reste ${r.joursRestants} jours.</p>`);
+  } else if (r.enCours) {
+    lignes.push(`<p>Il reste <strong>${r.joursRestants} jours</strong> : environ <strong>${euros(r.parJour)} par jour</strong>${r.totalAVenir ? `, une fois payés les abonnements à venir (${aVenir})` : ''}.</p>`);
+    const ecart = Math.round((r.budget - r.projection) * 100) / 100;
+    lignes.push(`<p>À ce rythme, environ <strong>${euros(r.projection)}</strong> dépensés à la fin du mois : ${ecart >= 0 ? `<span class="vert">${euros(ecart)} sous ton budget ✔</span>` : `<span class="rouge">${euros(-ecart)} au-dessus ⚠</span>`}.</p>`);
+  } else if (r.joursRestants === 0) {
+    lignes.push(r.reste >= 0
+      ? `<p class="vert">Mois terminé : ${euros(r.reste)} sous ton budget ✔</p>`
+      : `<p class="rouge">Mois terminé : ${euros(-r.reste)} au-dessus de ton budget ⚠</p>`);
+  }
+  if (r.enCours && (Date.now() - Date.parse(r.jusquau + 'T23:59:59')) / 864e5 > 3) {
+    lignes.push(`<p class="aide">Opérations connues jusqu'au ${jourCourt(r.jusquau)} : importe un relevé récent pour être à jour.</p>`);
+  }
+  if (tableau.rembourses) lignes.push(`<p class="aide">↔ ${tableau.rembourses} achat(s) remboursé(s) ce mois-ci, retirés des totaux.</p>`);
+  el.innerHTML = lignes.join('');
+}
+
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => tableau && dessiner());
 
 // --- Analyses ----------------------------------------------------------------
@@ -216,17 +247,29 @@ function afficherOperations() {
   $('#liste-operations').innerHTML = liste.length
     ? liste.map((o) => {
         const titre = o.date.slice(0, 10) !== jour ? `<li class="titre-jour">${jourCourt((jour = o.date.slice(0, 10)))}</li>` : '';
-        return `${titre}<li class="op">
+        const r = o.rembourse;
+        const lien = r
+          ? `<span class="rembourse"><span>↔ ${o.montant < 0 ? 'remboursé par' : 'rembourse'} « ${esc(r.description)} » le ${jourCourt(r.date)} : ne compte pas</span>
+             <button class="petit secondaire" style="width:auto" data-pas-rembourse="${esc(o.id)}">Pas un remboursement</button></span>`
+          : '';
+        return `${titre}<li class="op ${r ? 'annulee' : ''}">
           <span class="nom">${esc(o.description)}</span>
           <span class="cout ${o.montant > 0 ? 'vert' : ''}">${o.montant > 0 ? '+' : ''}${euros(o.montant)}</span>
           <select data-id="${esc(o.id)}" data-description="${esc(o.description)}" aria-label="Catégorie">
             ${etat.categories.map((c) => `<option ${c === o.categorie ? 'selected' : ''}>${esc(c)}</option>`).join('')}
           </select>
-          ${o.manuel ? '<small>corrigée</small>' : ''}</li>`;
+          ${o.manuel ? '<small>corrigée</small>' : ''}${lien}</li>`;
       }).join('')
     : '<li class="vide">Aucune opération.</li>';
 }
 $('#recherche').addEventListener('input', afficherOperations);
+
+$('#liste-operations').addEventListener('click', async (e) => {
+  const id = e.target.dataset.pasRembourse;
+  if (!id) return;
+  await api(`/api/operations/${encodeURIComponent(id)}`, { method: 'PATCH', body: { pasRembourse: true } }).catch((err) => alert(err.message));
+  chargerOperations();
+});
 
 $('#liste-operations').addEventListener('change', async (e) => {
   const { id, description } = e.target.dataset;
@@ -289,6 +332,7 @@ $('#effacer-exemple').addEventListener('click', async () => {
 // --- Réglages ----------------------------------------------------------------
 async function chargerReglages() {
   const [r] = await Promise.all([api('/api/reglages'), chargerEtat()]);
+  $('#budget-mensuel').value = r.budgetMensuel ?? '';
   $('#champs-budgets').innerHTML = etat.depenses.map((c) => `
     <label>${esc(c)}
       <input name="${esc(c)}" type="number" min="0" max="100000" step="1" inputmode="decimal" placeholder="—" value="${r.budgets[c] ?? ''}">
@@ -303,9 +347,10 @@ async function chargerReglages() {
 $('#form-budgets').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
-  const budgets = Object.fromEntries([...f.querySelectorAll('input')].map((i) => [i.name, i.value === '' ? null : Number(i.value)]));
+  const budgets = Object.fromEntries([...f.querySelectorAll('#champs-budgets input')].map((i) => [i.name, i.value === '' ? null : Number(i.value)]));
+  const mensuel = $('#budget-mensuel').value === '' ? null : Number($('#budget-mensuel').value);
   try {
-    await api('/api/budgets', { method: 'PUT', body: { budgets } });
+    await api('/api/budgets', { method: 'PUT', body: { budgets, mensuel } });
     dire(f, 'Budgets enregistrés ✔');
   } catch (err) {
     dire(f, err.message);

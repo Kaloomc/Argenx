@@ -57,17 +57,19 @@ function ecrire(nom, valeur) {
   fs.renameSync(f + '.tmp', f); // remplacement d'un coup : jamais de fichier à moitié écrit
 }
 
-const BUDGETS_DEMO = { Courses: 170, 'Restos & fast-food': 50, Transport: 40, Shopping: 60, Loisirs: 40 };
+const BUDGETS_DEMO = { Courses: 130, 'Restos & fast-food': 50, Transport: 35, Shopping: 50, Loisirs: 30 };
 
 let operations = lire('operations.json');
-const reglages = lire('reglages.json') ?? { regles: [], budgets: {} };
+const reglages = { regles: [], budgets: {}, budgetMensuel: 400, ...lire('reglages.json') };
 if (!operations) {
   // Premier lancement sans Notion : opérations d'exemple fictives pour voir les graphiques.
   operations = notion.actif ? [] : operationsDemo().map((o) => ({ ...o, demo: true }));
   if (operations.length) reglages.budgets = { ...BUDGETS_DEMO, ...reglages.budgets };
 }
+operations.sort((a, b) => b.date.localeCompare(a.date)); // toujours la plus récente d'abord
 
-// Classe tout ce que l'utilisateur n'a pas corrigé à la main (règles à jour à chaque démarrage).
+// Classe tout ce que l'utilisateur n'a pas corrigé à la main (règles à jour à chaque démarrage),
+// puis repère les achats remboursés.
 function reclasser() {
   let changees = 0;
   for (const o of operations) {
@@ -76,8 +78,16 @@ function reclasser() {
     if (c !== o.categorie) changees++;
     o.categorie = c;
   }
+  const paires = analyses.remboursements(operations);
+  for (const o of operations) {
+    if (paires.has(o.id)) o.rembourse = paires.get(o.id);
+    else delete o.rembourse;
+  }
   return changees;
 }
+// Les opérations qui comptent dans les totaux : sans les achats remboursés.
+const comptees = () => operations.filter((o) => !o.rembourse);
+const aujourdhui = () => new Date().toLocaleDateString('sv-SE'); // "2026-11-03", heure de Paris (TZ)
 
 const sauverOperations = () => ecrire('operations.json', operations);
 const sauverReglages = () => ecrire('reglages.json', reglages);
@@ -94,7 +104,9 @@ const verifier = (ok, message) => {
 const derniersMois = () => [...new Set(operations.map(analyses.moisDe))].sort().reverse();
 const moisDemande = (v) => (MOIS.test(v || '') ? v : derniersMois()[0] || new Date().toISOString().slice(0, 7));
 // Ce qui part vers Notion : les totaux par catégorie, sans les opérations d'exemple.
-const lignesNotion = (mois) => analyses.resumeMois(operations.filter((o) => !o.demo), mois, reglages.budgets).categories;
+const lignesNotion = (mois) => analyses.resumeMois(comptees().filter((o) => !o.demo), mois, reglages.budgets).categories;
+// Jusqu'où les opérations sont connues : date de la plus récente (les opérations sont triées, plus récente d'abord).
+const jusquau = () => [operations[0]?.date.slice(0, 10) || aujourdhui(), aujourdhui()].sort()[0];
 
 // --- État --------------------------------------------------------------------
 app.get('/api/etat', (req, res) => {
@@ -114,9 +126,9 @@ app.post('/api/import', express.text({ type: () => true, limit: '20mb' }), (req,
   const lu = lireRevolut(typeof req.body === 'string' ? req.body : '');
   const exempleEfface = lu.operations.length > 0 && operations.some((o) => o.demo);
   if (exempleEfface) operations = operations.filter((o) => !o.demo);
-  for (const o of lu.operations) o.categorie = classer(o, reglages.regles);
   const r = fusionner(operations, lu.operations);
   operations = r.operations;
+  reclasser();
   sauverOperations();
   const mois = [...new Set(r.ajout.map(analyses.moisDe))].sort();
   if (notion.actif && mois.length) notion.synchroniser(mois, lignesNotion);
@@ -132,17 +144,28 @@ app.delete('/api/exemple', (req, res) => {
 // --- Opérations et règles ------------------------------------------------------
 app.get('/api/operations', (req, res) => {
   const mois = moisDemande(req.query.mois);
+  const parId = new Map(operations.map((o) => [o.id, o]));
   res.json(operations
     .filter((o) => analyses.moisDe(o) === mois)
-    .map(({ id, date, description, montant, categorie, manuel }) => ({ id, date, description, montant, categorie, manuel: !!manuel })));
+    .map(({ id, date, description, montant, categorie, manuel, rembourse }) => {
+      const j = rembourse && parId.get(rembourse);
+      return { id, date, description, montant, categorie, manuel: !!manuel, rembourse: j ? { date: j.date, description: j.description, montant: j.montant } : null };
+    }));
 });
 
 app.patch('/api/operations/:id', (req, res) => {
   const op = operations.find((o) => o.id === req.params.id);
   verifier(op, 'Opération introuvable');
-  verifier(CATEGORIES.includes(req.body?.categorie), 'Catégorie inconnue');
-  op.categorie = req.body.categorie;
-  op.manuel = true;
+  if (req.body?.pasRembourse) {
+    // « Ce n'est pas un remboursement » : les deux opérations comptent de nouveau normalement.
+    const jumelle = operations.find((o) => o.id === op.rembourse);
+    for (const o of [op, jumelle]) if (o) o.pasRembourse = true;
+  } else {
+    verifier(CATEGORIES.includes(req.body?.categorie), 'Catégorie inconnue');
+    op.categorie = req.body.categorie;
+    op.manuel = true;
+  }
+  reclasser();
   sauverOperations();
   res.json({ ok: true });
 });
@@ -175,7 +198,9 @@ app.delete('/api/regles', (req, res) => {
 
 app.put('/api/budgets', (req, res) => {
   const budgets = req.body?.budgets ?? {};
+  const mensuel = req.body?.mensuel ?? null;
   verifier(typeof budgets === 'object', 'Budgets invalides');
+  verifier(mensuel === null || (Number.isFinite(mensuel) && mensuel >= 0 && mensuel <= 100000), 'Budget du mois invalide');
   const propres = {};
   for (const [c, v] of Object.entries(budgets)) {
     verifier(CATEGORIES.includes(c) && !HORS_DEPENSES.includes(c), `Catégorie inconnue : ${c}`);
@@ -184,6 +209,7 @@ app.put('/api/budgets', (req, res) => {
     propres[c] = Math.round(v * 100) / 100;
   }
   reglages.budgets = propres;
+  reglages.budgetMensuel = mensuel ? Math.round(mensuel * 100) / 100 : null;
   sauverReglages();
   res.json(reglages);
 });
@@ -191,15 +217,19 @@ app.put('/api/budgets', (req, res) => {
 // --- Tableau de bord et analyses -----------------------------------------------
 app.get('/api/tableau', (req, res) => {
   const mois = moisDemande(req.query.mois);
+  const ops = comptees();
+  const abonnements = analyses.abonnements(ops);
   res.json({
     mois,
     moisDispo: derniersMois(),
-    ...analyses.resumeMois(operations, mois, reglages.budgets),
-    evolution: analyses.evolution(operations, mois),
-    top: analyses.topCommercants(operations, mois),
-    comparaison: analyses.comparaison(operations, mois),
-    inhabituelles: analyses.inhabituelles(operations, mois),
-    abonnements: analyses.abonnements(operations),
+    ...analyses.resumeMois(ops, mois, reglages.budgets),
+    rythme: analyses.rythme(ops, mois, reglages.budgetMensuel, jusquau(), abonnements),
+    rembourses: operations.filter((o) => o.rembourse && o.montant < 0 && analyses.moisDe(o) === mois).length,
+    evolution: analyses.evolution(ops, mois),
+    top: analyses.topCommercants(ops, mois),
+    comparaison: analyses.comparaison(ops, mois),
+    inhabituelles: analyses.inhabituelles(ops, mois),
+    abonnements,
   });
 });
 

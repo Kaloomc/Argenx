@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { lireRevolut, fusionner } = require('./csv');
 const { classer } = require('./categories');
-const { resumeMois, abonnements, inhabituelles } = require('./analyses');
+const { resumeMois, abonnements, inhabituelles, remboursements, rythme } = require('./analyses');
 const operationsDemo = require('./demo');
 
 const CSV_EN = [
@@ -108,10 +108,51 @@ test('détection des abonnements', () => {
   assert.strictEqual(a[0].actif, true);
 });
 
-test('données de démo : abonnements et dépense inhabituelle repérés', () => {
+test('achats remboursés : ils s’annulent', () => {
+  const op = (id, date, description, montant, type = 'card') => ({ id, date: date + ' 10:00:00', description, montant, type, categorie: classer({ description, montant, type }) });
+  const ops = [
+    op('a', '2026-10-06', 'IKEA', -89.99), op('b', '2026-10-09', 'IKEA', 89.99, 'refund'), // remboursé par le magasin
+    op('c', '2026-10-20', 'SNCF', -64.5), op('d', '2026-10-22', 'Payment from Maman', 64.5, 'transfer'), // remboursé par un proche
+    op('e', '2026-10-01', 'Payment from Papa', 400, 'transfer'), // argent du mois : rien à annuler
+    op('f', '2026-10-02', 'Lidl', -30), op('g', '2026-12-01', 'Payment from Lea', 30, 'transfer'), // 2 mois plus tard : non
+    op('h', '2026-10-03', 'Top-Up by *1234', 25, 'topup'), op('i', '2026-10-01', 'Amazon', -25), // une recharge n'est pas un remboursement
+  ];
+  const paires = remboursements(ops);
+  assert.deepStrictEqual(Object.fromEntries(paires), { a: 'b', b: 'a', c: 'd', d: 'c' });
+  const restantes = ops.filter((o) => !paires.has(o.id));
+  const r = resumeMois(restantes, '2026-10');
+  assert.strictEqual(r.sorties, 55); // Lidl + Amazon, sans IKEA ni SNCF
+  assert.strictEqual(r.entrees, 425); // Papa + recharge, sans le remboursement de Maman
+  // « Ce n'est pas un remboursement »
+  assert.strictEqual(remboursements(ops.map((o) => (['c', 'd'].includes(o.id) ? { ...o, pasRembourse: true } : o))).has('c'), false);
+});
+
+test('budget du mois : reste, rythme et abonnements à venir', () => {
+  const op = (date, description, montant, categorie) => ({ date: date + ' 10:00:00', description, montant, categorie });
+  const ops = [
+    op('2026-10-08', 'Netflix.com', -8, 'Abonnements'), op('2026-11-01', 'Payment from Papa', 400, 'Revenus'),
+    op('2026-11-02', 'Lidl', -60, 'Courses'), op('2026-11-10', 'Izly', -40, 'Restos & fast-food'),
+    op('2026-09-08', 'Netflix.com', -8, 'Abonnements'),
+    op('2026-09-15', 'Lidl', -300, 'Courses'), op('2026-10-15', 'Super U', -310, 'Courses'), // habitude : 10 €/jour
+  ];
+  const r = rythme(ops, '2026-11', 400, '2026-11-10', abonnements(ops));
+  assert.strictEqual(r.depense, 100);
+  assert.strictEqual(r.reste, 300);
+  assert.strictEqual(r.joursRestants, 20);
+  assert.deepStrictEqual(r.aVenir.map((x) => x.nom), ['Netflix.com']); // pas encore passé en novembre
+  assert.strictEqual(r.parJour, 14.6); // (300 − 8) / 20
+  assert.strictEqual(r.projection, 308); // 100 + 10 €/jour × 20 + 8 (même rythme que d'habitude)
+  // Mois terminé
+  const fini = rythme(ops, '2026-10', 400, '2026-11-10', abonnements(ops));
+  assert.strictEqual(fini.enCours, false);
+  assert.strictEqual(fini.projection, 318);
+});
+
+test('données de démo : abonnements, remboursements et dépense inhabituelle repérés', () => {
   const ops = operationsDemo(new Date(2026, 10, 3)).map((o) => ({ ...o, categorie: classer(o) }));
   const noms = abonnements(ops).map((x) => x.nom);
-  for (const n of ['Netflix.com', 'Spotify', 'Free Mobile', 'Basic-Fit']) assert.ok(noms.includes(n), n);
-  assert.ok(!noms.some((n) => ['Lidl', 'Cash at Distributeur'].includes(n)), noms.join(', '));
-  assert.ok(inhabituelles(ops, '2026-09').some((x) => x.description === 'Darty'));
+  for (const n of ['Netflix.com', 'Spotify', 'Free Mobile']) assert.ok(noms.includes(n), n);
+  assert.ok(!noms.some((n) => ['Lidl', 'Cash at Distributeur', 'Payment from Papa'].includes(n)), noms.join(', '));
+  assert.strictEqual(remboursements(ops).size, 4);
+  assert.ok(inhabituelles(ops, '2026-08').some((x) => x.description === 'Fnac'));
 });

@@ -2,11 +2,13 @@
 
 Appli web pour téléphone (PWA installable) qui range tes dépenses à partir des **relevés CSV de Revolut** :
 
-1. **import** du relevé (export en anglais ou en français), sans doublons même si les périodes se chevauchent ;
-2. **classement automatique** par règles (Courses, Transport, Abonnements…), que tu corriges en un geste ;
-3. **tableau de bord du mois** : dépenses par catégorie, entrées et dépenses, 12 derniers mois, top 10 des commerçants ;
-4. **analyses** : abonnements repérés et leur coût annuel, comparaison avec le mois précédent, dépenses inhabituelles, budget par catégorie ;
-5. **résumé mensuel dans Notion** (totaux par catégorie seulement).
+1. **budget du mois** (400 € par défaut) : ce qu'il reste, combien ça fait par jour, où tu finiras le mois à ce rythme, abonnements encore à payer ;
+2. **achats remboursés repérés tout seuls** (meuble remboursé par le magasin, billet remboursé par un proche) : ils ne comptent pas ;
+3. **import** du relevé (export en anglais ou en français), sans doublons même si les périodes se chevauchent ;
+4. **classement automatique** par règles (Courses, Transport, Abonnements…), que tu corriges en un geste ;
+5. **tableau de bord du mois** : dépenses par catégorie, entrées et dépenses, 12 derniers mois, top 10 des commerçants ;
+6. **analyses** : abonnements repérés et leur coût annuel, comparaison avec le mois précédent, dépenses inhabituelles, budget par catégorie ;
+7. **résumé mensuel dans Notion** (totaux par catégorie seulement).
 
 Pas d'IA : tout est fait par règles simples, expliquées plus bas. Les analyses décrivent tes dépenses ; ce ne sont pas des conseils financiers.
 
@@ -71,6 +73,23 @@ Dans l'ordre :
 
 Un remboursement garde la catégorie du commerçant et vient en déduction de ses dépenses.
 Quand tu changes la catégorie d'une opération (onglet 📋 Opérations), l'appli propose d'en faire une **règle** qui reclasse les opérations passées et futures (sauf celles que tu as corrigées à la main).
+
+## Le budget du mois
+
+Fixe dans ⚙️ Réglages ce que tu peux dépenser par mois (400 € par défaut). L'épargne ne compte pas comme une dépense.
+En haut de l'onglet 📊 Mois :
+
+- **reste à dépenser** = budget − dépenses du mois ;
+- **par jour** = (reste − abonnements pas encore payés ce mois-ci) ÷ jours restants ;
+- **à ce rythme** = dépensé + dépenses courantes par jour × jours restants + abonnements à venir. En début de mois, quand il n'y a que quelques jours de données, le rythme est mélangé avec celui des 3 mois précédents.
+
+Le « jour connu » est la date de ta dernière opération importée : importe un relevé récent pour que les calculs soient à jour.
+
+## Les remboursements
+
+Une somme reçue **égale au centime près** à un achat des **30 jours d'avant** l'annule : les deux opérations sont barrées et ne comptent ni en dépense ni en entrée. Ça marche pour un remboursement du magasin comme pour un virement d'un proche. Les recharges (top-up) et l'épargne ne sont jamais prises pour des remboursements.
+Erreur ? Bouton **« Pas un remboursement »** sous l'opération.
+Remboursé **en partie** (par exemple un ami qui te rend sa moitié) : mets la somme reçue dans la même catégorie que l'achat, elle vient en déduction.
 
 ## Les analyses
 
