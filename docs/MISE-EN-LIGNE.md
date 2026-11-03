@@ -34,6 +34,8 @@ Au premier envoi, l'appli crée la base **« Résumé mensuel »** dans cette pa
    - Source : **Créer un fichier docker-compose.yml**
 3. Colle le contenu de [`docker-compose.yml`](../docker-compose.yml) et remplis :
    - `APP_PASSWORD=` un mot de passe à toi — **obligatoire** : sans lui, l'appli refuse d'écouter sur le réseau (ce sont tes comptes !)
+   - `CLE_INTERNE=` la clé partagée avec Repax et Agendix (voir la section « Relier Argenx à Repax » plus bas ; vide = pas de lien)
+   - `REPAX_URL=http://192.168.1.45:3011` (déjà rempli : l'adresse de Repax sur le réseau de la maison)
    - `NOTION_TOKEN=ntn_...` (ou vide pour le mode démo)
    - `NOTION_PAGE_ID=https://www.notion.so/...`
 4. **Suivant** → (pas besoin de Web Station) → **Terminé**. Le projet démarre.
@@ -112,6 +114,38 @@ Pour changer le mot de passe ou un jeton : **Projet** → `argenx` → **Arrête
 
 ---
 
+## 9. Relier Argenx à Repax (budget courses)
+
+Repax (repas) et Argenx (argent) se parlent sur le réseau de la maison, avec une **clé partagée** :
+
+- Repax lit dans Argenx tes **vraies dépenses de courses** (catégorie Courses), à la place de la saisie à la main ;
+- Argenx lit dans Repax les **courses prévues sur les 7 prochains jours** et affiche, dans 📊 Mois, une carte « 🛒 Courses » : prévu, dépensé ce mois-ci, et fin de mois estimée (dépensé + reste à acheter).
+
+1. Prends la clé déjà créée pour Agendix (sinon, crée-en une dans un terminal) :
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
+   ```
+
+2. **Container Manager** → **Projet** → `argenx` → **Arrêter** → **Modifier** le YAML :
+   - `CLE_INTERNE=` **la même clé** que dans Repax et Agendix
+   - `REPAX_URL=http://192.168.1.45:3011`
+
+   → **Enregistrer** → **Démarrer**. Fais pareil côté Repax (sa clé `CLE_INTERNE` et `ARGENX_URL=http://192.168.1.45:3012`).
+
+3. Vérification depuis un ordinateur de la maison (remplace `TA_CLE`) :
+
+   ```bash
+   curl -H "X-Cle-Interne: TA_CLE" "http://192.168.1.45:3012/api/courses-reelles?du=2026-11-01&au=2026-11-30"
+   ```
+
+   Réponse attendue : `{"total":…,"operations":[…]}`. Avec une mauvaise clé : `Clé interne refusée`.
+
+Si Repax est arrêté ou mal relié, Argenx n'affiche simplement pas la carte Courses : le reste marche normalement.
+Les opérations d'exemple (mode démo) ne sont jamais envoyées à Repax.
+
+---
+
 ## Dépannage
 
 | Problème | Piste |
@@ -123,3 +157,5 @@ Pour changer le mot de passe ou un jeton : **Projet** → `argenx` → **Arrête
 | La page ne s'ouvre pas depuis la 4G | Redirection Freebox (étape 6) ou pare-feu DSM |
 | Avertissement de certificat | Étape 5 : le certificat n'est pas associé au port 8445 |
 | `fatal: detected dubious ownership` | La ligne `safe.directory` manque dans la commande du YAML |
+| Pas de carte « 🛒 Courses » dans 📊 Mois | `CLE_INTERNE` différente entre Argenx et Repax, `REPAX_URL` vide, ou Repax arrêté |
+| Repax ne voit pas les dépenses de courses | Même chose côté Repax (`CLE_INTERNE`, `ARGENX_URL`), ou les achats ne sont pas dans la catégorie Courses |

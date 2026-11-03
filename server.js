@@ -2,7 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { lireRevolut, fusionner, normaliser } = require('./csv');
+const { lireRevolut, fusionner, normaliser, arrondi } = require('./csv');
 const { CATEGORIES, HORS_DEPENSES, classer } = require('./categories');
 const analyses = require('./analyses');
 const notion = require('./notion');
@@ -16,14 +16,17 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- Mot de passe (obligatoire pour être joignable depuis le réseau) ----------
 // Sans APP_PASSWORD, le serveur n'écoute que sur 127.0.0.1 (cet ordinateur seulement).
 // Avec, l'API demande de se connecter une fois ; un cookie garde la session un an.
+// Les autres applis du NAS (Repax, Agendix) passent par l'en-tête X-Cle-Interne = CLE_INTERNE.
 const MOT_DE_PASSE = process.env.APP_PASSWORD;
-const jeton = MOT_DE_PASSE && crypto.createHmac('sha256', MOT_DE_PASSE).update('argenx').digest('hex');
+const CLE_INTERNE = process.env.CLE_INTERNE;
+const signer = (s) => crypto.createHmac('sha256', s).update('argenx').digest('hex');
+const jeton = MOT_DE_PASSE && signer(MOT_DE_PASSE);
 const egal = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 app.post('/api/connexion', async (req, res) => {
   if (!MOT_DE_PASSE) return res.json({ ok: true });
   const essai = String(req.body?.motDePasse ?? '');
-  if (!egal(crypto.createHmac('sha256', essai).update('argenx').digest('hex'), jeton)) {
+  if (!egal(signer(essai), jeton)) {
     await new Promise((r) => setTimeout(r, 1000)); // freine les essais en série
     return res.status(401).json({ erreur: 'Mot de passe incorrect' });
   }
@@ -32,6 +35,12 @@ app.post('/api/connexion', async (req, res) => {
 });
 
 app.use('/api', (req, res, next) => {
+  const cleRecue = req.get('X-Cle-Interne');
+  if (cleRecue !== undefined) {
+    // Empreintes de même longueur : comparaison à temps constant quelle que soit la clé reçue.
+    if (CLE_INTERNE && egal(signer(cleRecue), signer(CLE_INTERNE))) return next();
+    return res.status(401).json({ erreur: 'Clé interne refusée' });
+  }
   if (!MOT_DE_PASSE || req.path === '/etat') return next();
   const cookie = (req.headers.cookie || '').match(/(?:^|;\s*)argenx=([a-f0-9]+)/)?.[1] || '';
   if (egal(cookie, jeton)) return next();
@@ -39,7 +48,7 @@ app.use('/api', (req, res, next) => {
 });
 
 // --- Données : fichiers JSON dans data/ (ignoré par Git) ----------------------
-const DOSSIER = path.join(__dirname, 'data');
+const DOSSIER = process.env.DOSSIER_DONNEES || path.join(__dirname, 'data'); // autre dossier : pour les tests
 
 function lire(nom) {
   try {
@@ -250,6 +259,49 @@ app.get('/api/tableau', (req, res) => {
   });
 });
 
+// --- Liens avec les autres applis du NAS ------------------------------------------
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const reelles = () => comptees().filter((o) => !o.demo);
+
+// Pour Repax : les vraies dépenses de courses (catégorie Courses) entre deux dates, montants en positif.
+app.get('/api/courses-reelles', (req, res) => {
+  const { du, au } = req.query;
+  verifier(DATE.test(du || '') && DATE.test(au || '') && du <= au, 'Dates invalides : du=AAAA-MM-JJ&au=AAAA-MM-JJ');
+  const liste = reelles()
+    .filter((o) => o.categorie === 'Courses' && o.date.slice(0, 10) >= du && o.date.slice(0, 10) <= au)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((o) => ({ date: o.date.slice(0, 10), libelle: o.description, montant: arrondi(-o.montant) }));
+  res.json({ total: arrondi(liste.reduce((s, o) => s + o.montant, 0)), operations: liste });
+});
+
+// Prévision de Repax (courses des 7 prochains jours). null si Repax n'est pas configuré ou ne répond pas.
+async function previsionRepax() {
+  const url = process.env.REPAX_URL;
+  if (!url || !CLE_INTERNE) return null;
+  try {
+    const r = await fetch(new URL('/api/prevision', url), { headers: { 'X-Cle-Interne': CLE_INTERNE }, signal: AbortSignal.timeout(3000) });
+    const p = r.ok ? await r.json() : null;
+    return p && [p.total, p.resteAAcheter, p.repas].every(Number.isFinite) ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+// Courses prévues par Repax comparées aux courses déjà payées ce mois-ci. {} si Repax n'est pas joignable.
+app.get('/api/courses-prevues', async (req, res) => {
+  const p = await previsionRepax();
+  if (!p) return res.json({});
+  const mois = aujourdhui().slice(0, 7);
+  const depense = analyses.resumeMois(reelles(), mois).categories.find((c) => c.categorie === 'Courses')?.montant ?? 0;
+  res.json({
+    prevision: { du: p.du, au: p.au, total: p.total, resteAAcheter: p.resteAAcheter, repas: p.repas },
+    mois,
+    depense,
+    finDeMois: arrondi(depense + p.resteAAcheter),
+    budget: reglages.budgets.Courses ?? null,
+  });
+});
+
 // --- Notion ----------------------------------------------------------------------
 app.post('/api/notion', (req, res) => {
   verifier(notion.actif, 'Notion n’est pas configuré (mode démo).');
@@ -268,10 +320,14 @@ app.use((err, req, res, next) => {
   res.status(status).json({ erreur: message });
 });
 
-const PORT = Number(process.env.PORT) || 3012;
-const pret = () => console.log(`Argenx sur http://localhost:${PORT} (Notion ${notion.actif ? 'activé' : 'non configuré : mode démo'})`);
-if (MOT_DE_PASSE) app.listen(PORT, pret);
-else {
-  console.warn('APP_PASSWORD manquant : Argenx n’écoute que sur 127.0.0.1, il est injoignable depuis le réseau.');
-  app.listen(PORT, '127.0.0.1', pret);
+module.exports = app; // pour les tests
+
+if (require.main === module) {
+  const PORT = Number(process.env.PORT) || 3012;
+  const pret = () => console.log(`Argenx sur http://localhost:${PORT} (Notion ${notion.actif ? 'activé' : 'non configuré : mode démo'})`);
+  if (MOT_DE_PASSE) app.listen(PORT, pret);
+  else {
+    console.warn('APP_PASSWORD manquant : Argenx n’écoute que sur 127.0.0.1, il est injoignable depuis le réseau.');
+    app.listen(PORT, '127.0.0.1', pret);
+  }
 }

@@ -88,6 +88,26 @@ async function chargerTableau() {
   choix.hidden = !['mois', 'analyses', 'operations'].includes(location.hash.slice(1) || 'mois');
   dessiner();
   afficherAnalyses();
+  afficherCoursesRepax(tableau.mois);
+}
+
+// Carte « Courses » : prévision de Repax (si l'appli est reliée), seulement pour le mois en cours.
+async function afficherCoursesRepax(m) {
+  const el = $('#courses-repax');
+  const c = await api('/api/courses-prevues').catch(() => ({}));
+  el.hidden = !c.prevision || c.mois !== m;
+  if (el.hidden) return;
+  const p = c.prevision;
+  el.innerHTML = `
+    <h3>🛒 Courses</h3>
+    <div class="ligne-budget">
+      <div><small>Prévu (7 prochains jours)</small><strong>${euros(p.total)}</strong></div>
+      <div><small>Dépensé ce mois-ci</small><strong>${euros(c.depense)}</strong></div>
+    </div>
+    <p>${p.repas} repas prévus dans Repax, dont <strong>${euros(p.resteAAcheter)}</strong> encore à acheter.</p>
+    <p>Fin du mois estimée : <strong>${euros(c.finDeMois)}</strong> de courses (dépensé + reste à acheter)${c.budget
+      ? ` : ${c.finDeMois <= c.budget ? `<span class="vert">dans ton budget Courses de ${euros(c.budget)} ✔</span>` : `<span class="rouge">${euros(c.finDeMois - c.budget)} au-dessus de ton budget Courses ⚠</span>`}`
+      : ''}.</p>`;
 }
 
 const graphes = {};
