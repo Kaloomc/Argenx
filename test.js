@@ -218,4 +218,22 @@ test('accès : mot de passe seulement, plus de clé interne', async (t) => {
   assert.strictEqual((await get('/api/tableau', { Cookie: cookie })).status, 200);
   assert.strictEqual((await get('/api/courses-reelles?du=2026-10-01&au=2026-10-31', { Cookie: cookie })).status, 404);
   assert.deepStrictEqual(await (await get('/api/courses-prevues', { Cookie: cookie })).json(), {}); // sans Notion : pas de carte
+
+  // Sauvegarde puis restauration : on retrouve les mêmes opérations et réglages.
+  const envoyer = (chemin, corps) => fetch(base + chemin, { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'text/plain' }, body: corps });
+  assert.strictEqual((await envoyer('/api/import', CSV_EN)).status, 200);
+  const sauvegarde = await get('/api/sauvegarde', { Cookie: cookie });
+  assert.match(sauvegarde.headers.get('content-disposition'), /attachment; filename="?argenx-\d{4}-\d{2}-\d{2}\.json/);
+  const texte = await sauvegarde.text();
+  const s = JSON.parse(texte);
+  assert.ok(s.operations.length > 0 && s.operations.every((o) => !o.demo));
+  assert.strictEqual((await envoyer('/api/restaurer', '{"pas":"une sauvegarde"}')).status, 400);
+  const r = await (await envoyer('/api/restaurer', texte)).json();
+  assert.strictEqual(r.operations, s.operations.length);
+  assert.deepStrictEqual(JSON.parse(await (await get('/api/sauvegarde', { Cookie: cookie })).text()).operations, s.operations);
+});
+
+test('mots-clés : « Dr Martens » n’est pas une dépense de santé', () => {
+  assert.notStrictEqual(classer({ description: 'Dr Martens', montant: -120, type: 'card' }), 'Santé');
+  assert.strictEqual(classer({ description: 'Pharmacie du Centre', montant: -8, type: 'card' }), 'Santé');
 });

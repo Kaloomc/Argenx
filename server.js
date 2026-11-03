@@ -146,6 +146,33 @@ app.delete('/api/exemple', (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Sauvegarde ------------------------------------------------------------------
+// Tout ce qui n'est que sur le NAS (opérations, règles, corrections à la main), dans un seul fichier.
+app.get('/api/sauvegarde', (req, res) => {
+  const reelles = operations.filter((o) => !o.demo);
+  res.attachment(`argenx-${aujourdhui()}.json`).json({ argenx: 1, date: aujourdhui(), operations: reelles, reglages });
+});
+
+// Restaurer une sauvegarde : remplace toutes les opérations et les réglages.
+// Envoyée comme texte brut : elle peut dépasser la limite de 100 ko du JSON habituel.
+app.post('/api/restaurer', express.text({ type: () => true, limit: '50mb' }), (req, res) => {
+  let s;
+  try {
+    s = JSON.parse(req.body);
+  } catch {
+    throw erreur('Ce fichier n’est pas une sauvegarde Argenx.');
+  }
+  verifier(s?.argenx === 1 && Array.isArray(s.operations) && s.reglages && typeof s.reglages === 'object', 'Ce fichier n’est pas une sauvegarde Argenx.');
+  verifier(s.operations.every((o) => o && typeof o.id === 'string' && typeof o.date === 'string' && Number.isFinite(o.montant)), 'Sauvegarde abîmée : opération illisible.');
+  operations = s.operations.sort((a, b) => b.date.localeCompare(a.date));
+  for (const k of Object.keys(reglages)) delete reglages[k];
+  Object.assign(reglages, { regles: [], budgets: {}, budgetMensuel: 400, pasAbonnements: [] }, s.reglages);
+  reclasser();
+  sauverOperations();
+  sauverReglages();
+  res.json({ operations: operations.length, date: s.date });
+});
+
 // --- Opérations et règles ------------------------------------------------------
 app.get('/api/operations', (req, res) => {
   const mois = moisDemande(req.query.mois);

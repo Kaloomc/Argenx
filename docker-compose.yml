@@ -1,6 +1,7 @@
 # À coller dans Container Manager → Projet → Créer (voir docs/MISE-EN-LIGNE.md).
 # Au démarrage : clone ou met à jour le dépôt GitHub, installe et lance le serveur.
 # Pour déployer une nouvelle version : pousser sur GitHub, puis redémarrer le projet.
+# Si la nouvelle version échoue aux tests (npm test), l'ancienne est remise et démarre à sa place.
 # Les opérations sont gardées dans /docker/argenx/app/data (jamais envoyées sur GitHub).
 services:
   argenx:
@@ -26,9 +27,13 @@ services:
       sh -c "apk add --no-cache git &&
              git config --global --add safe.directory /app &&
              if [ -d /app/.git ]; then
+               AVANT=$$(git rev-parse HEAD);
                git fetch --depth 1 origin main && git reset --hard FETCH_HEAD;
+               if ! (npm ci --omit=dev && NOTION_TOKEN= npm test); then
+                 echo 'Nouvelle version en echec aux tests : retour a la precedente';
+                 git reset --hard $$AVANT && npm ci --omit=dev;
+               fi;
              else
-               git clone --depth 1 https://github.com/Kaloomc/Argenx.git /app;
+               git clone --depth 1 https://github.com/Kaloomc/Argenx.git /app && npm ci --omit=dev;
              fi &&
-             npm ci --omit=dev &&
              npm start"

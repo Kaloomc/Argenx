@@ -82,8 +82,8 @@
     <section id="importer">
       <h2>Importer un relevé Revolut</h2>
       <form id="form-import" class="carte">
-        <label>Fichier CSV exporté depuis Revolut
-          <input name="fichier" type="file" accept=".csv,text/csv" required>
+        <label>Fichier CSV exporté depuis Revolut (ou sauvegarde Argenx .json)
+          <input name="fichier" type="file" accept=".csv,text/csv,.json,application/json" required>
         </label>
         <button type="submit">Importer</button>
         <p class="message" role="status"></p>
@@ -116,6 +116,11 @@
         <p class="aide" id="aide-notion"></p>
         <button id="envoyer-notion">Envoyer le mois vers Notion</button>
         <p class="message" id="etat-notion" role="status"></p>
+      </div>
+      <h3>Sauvegarde</h3>
+      <div class="carte">
+        <p class="aide">Tes opérations, tes règles et tes corrections ne sont que sur le NAS (Notion n'a que les totaux). Télécharge une sauvegarde de temps en temps. Pour la remettre : onglet ⬆️ Importer, choisis le fichier .json.</p>
+        <a class="bouton" href="/api/sauvegarde" download>💾 Télécharger une sauvegarde</a>
       </div>
     </section>
   </main>

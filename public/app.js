@@ -326,6 +326,7 @@ $('#form-import').addEventListener('submit', async (e) => {
   const f = e.target;
   const fichier = f.fichier.files[0];
   if (!fichier) return;
+  if (/\.json$/i.test(fichier.name)) return restaurer(f, fichier);
   f.querySelector('button').disabled = true;
   dire(f, 'Import en cours…');
   try {
@@ -349,6 +350,21 @@ $('#form-import').addEventListener('submit', async (e) => {
   }
   f.querySelector('button').disabled = false;
 });
+
+async function restaurer(f, fichier) {
+  if (!confirm('Restaurer cette sauvegarde ? Elle remplace toutes les opérations et tous les réglages actuels.')) return;
+  dire(f, 'Restauration…');
+  try {
+    // En texte brut : le serveur ne limite pas sa taille comme pour le JSON habituel.
+    const r = await api('/api/restaurer', { method: 'POST', brut: new Blob([await fichier.text()], { type: 'text/plain' }) });
+    dire(f, `✔ Sauvegarde du ${r.date} restaurée : ${r.operations} opérations.`);
+    mois = null;
+    f.reset();
+    chargerEtat();
+  } catch (err) {
+    dire(f, err.message);
+  }
+}
 
 $('#effacer-exemple').addEventListener('click', async () => {
   if (!confirm('Effacer toutes les opérations d’exemple ?')) return;

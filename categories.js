@@ -44,7 +44,7 @@ const MOTS_CLES = [
     'billetreduc', 'bowling', 'basic fit', 'fitness park', 'musee', 'concert', 'bar',
   ]],
   ['Santé', [
-    'pharmacie', 'pharma', 'doctolib', 'medecin', 'docteur', 'dr', 'dentiste', 'hopital', 'opticien', 'mutuelle',
+    'pharmacie', 'pharma', 'doctolib', 'medecin', 'docteur', 'dentiste', 'hopital', 'opticien', 'mutuelle',
     'laboratoire', 'kine', 'ameli',
   ]],
   ['Études', [

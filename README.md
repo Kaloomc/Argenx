@@ -58,6 +58,8 @@ Argenx lit « Liste de courses » et « Planning des repas » de Repax pour la c
 
 Le dossier `data/` n'est jamais envoyé sur GitHub. Les jetons et mots de passe sont seulement dans les variables d'environnement.
 
+**Sauvegarde** : ⚙️ Réglages → « Télécharger une sauvegarde » (un fichier `.json` avec opérations, règles et corrections). Pour la remettre : ⬆️ Importer, choisir ce fichier (remplace tout). Sur le NAS, une tâche Hyper Backup du dossier `/docker` couvre aussi ces fichiers.
+
 ## Les règles de lecture du CSV
 
 - Colonnes reconnues en anglais (`Type, Product, Started Date, Completed Date, Description, Amount, Fee, Currency, State, Balance`) ou en français (`Type, Produit, Date de début, Date de fin, Description, Montant, Frais, Devise, État, Solde`), séparées par des virgules ou des points-virgules. Si elles ne sont pas reconnues, l'appli affiche celles qu'elle a trouvées.

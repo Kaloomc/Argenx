@@ -81,11 +81,12 @@ input, select {
   background: var(--fond); color: var(--texte);
 }
 #recherche { margin-bottom: 8px; }
-button {
+button, a.bouton {
   border: 0; border-radius: 8px; padding: 10px 16px;
   background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
 }
-@media (prefers-color-scheme: dark) { button { color: #10132a; } }
+a.bouton { display: block; text-align: center; text-decoration: none; }
+@media (prefers-color-scheme: dark) { button, a.bouton { color: #10132a; } }
 button:disabled { opacity: .5; }
 button.petit { min-height: 36px; padding: 6px 12px; font-size: .875rem; }
 button.secondaire { background: transparent; color: var(--rouge); border: 1px solid var(--bord); width: 100%; }
