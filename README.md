@@ -85,6 +85,11 @@ En haut de l'onglet 📊 Mois :
 
 Le « jour connu » est la date de ta dernière opération importée : importe un relevé récent pour que les calculs soient à jour.
 
+## Corriger à la main
+
+- **Ne compte pas** : catégorie à choisir dans 📋 Opérations pour une opération qui ne doit apparaître nulle part (virement entre tes propres comptes, avance pour quelqu'un…). Elle est barrée et sortie du budget, des graphiques et des analyses. Comme pour les autres catégories, l'appli propose d'en faire une règle.
+- **Pas un abonnement** : bouton sous chaque abonnement repéré, dans 🔍 Analyses. Le commerçant ne sera plus proposé ; tu peux le remettre dans ⚙️ Réglages.
+
 ## Les remboursements
 
 Une somme reçue **égale au centime près** à un achat des **30 jours d'avant** l'annule : les deux opérations sont barrées et ne comptent ni en dépense ni en entrée. Ça marche pour un remboursement du magasin comme pour un virement d'un proche. Les recharges (top-up) et l'épargne ne sont jamais prises pour des remboursements.

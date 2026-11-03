@@ -215,7 +215,8 @@ function afficherAnalyses() {
        <ul class="liste">${t.abonnements.map((a) => `
         <li ${a.actif ? '' : 'class="vide"'}><span class="nom">${esc(a.nom)}
           <small>${a.fois} paiements · dernier le ${jourCourt(a.dernier)}${a.actif ? '' : ' · plus vu depuis'}</small></span>
-          <span class="cout">${euros(a.montant)}<small>/mois · ${euros(a.coutAnnuel)}/an</small></span></li>`).join('')}</ul>`
+          <span class="cout">${euros(a.montant)}<small>/mois · ${euros(a.coutAnnuel)}/an</small></span>
+          <button class="petit secondaire" style="width:auto" data-pas-abonnement="${esc(a.cle)}" data-nom="${esc(a.nom)}">Pas un abonnement</button></li>`).join('')}</ul>`
     : '<p class="vide">Aucun abonnement repéré (il faut au moins 2 paiements à environ un mois d’écart).</p>';
 
   $('#comparaison').innerHTML = t.comparaison.length
@@ -230,6 +231,13 @@ function afficherAnalyses() {
           <span class="cout">${euros(o.montant)}</span></li>`).join('')}</ul>`
     : '<p class="vide">Rien d’inhabituel ce mois-ci (plus de 3 fois la dépense habituelle de la catégorie).</p>';
 }
+
+$('#abonnements').addEventListener('click', async (e) => {
+  const { pasAbonnement: cle, nom } = e.target.dataset;
+  if (!cle) return;
+  await api('/api/pas-abonnements', { method: 'POST', body: { cle, nom } }).catch((err) => alert(err.message));
+  chargerTableau();
+});
 
 // --- Opérations ----------------------------------------------------------------
 let operations = [];
@@ -252,7 +260,7 @@ function afficherOperations() {
           ? `<span class="rembourse"><span>↔ ${o.montant < 0 ? 'remboursé par' : 'rembourse'} « ${esc(r.description)} » le ${jourCourt(r.date)} : ne compte pas</span>
              <button class="petit secondaire" style="width:auto" data-pas-rembourse="${esc(o.id)}">Pas un remboursement</button></span>`
           : '';
-        return `${titre}<li class="op ${r ? 'annulee' : ''}">
+        return `${titre}<li class="op ${r || o.categorie === 'Ne compte pas' ? 'annulee' : ''}">
           <span class="nom">${esc(o.description)}</span>
           <span class="cout ${o.montant > 0 ? 'vert' : ''}">${o.montant > 0 ? '+' : ''}${euros(o.montant)}</span>
           <select data-id="${esc(o.id)}" data-description="${esc(o.description)}" aria-label="Catégorie">
@@ -341,6 +349,10 @@ async function chargerReglages() {
     ? r.regles.map((g) => `<li><span class="nom">« ${esc(g.motCle)} » → ${esc(g.categorie)}</span>
         <button class="petit secondaire" style="width:auto" data-supprimer="${esc(g.motCle)}">Supprimer</button></li>`).join('')
     : '<li class="vide">Aucune règle. Corrige une opération dans 📋 Opérations pour en créer une.</li>';
+  $('#liste-pas-abonnements').innerHTML = r.pasAbonnements.length
+    ? r.pasAbonnements.map((p) => `<li><span class="nom">${esc(p.nom)}</span>
+        <button class="petit secondaire" style="width:auto" data-remettre="${esc(p.cle)}">Remettre</button></li>`).join('')
+    : '<li class="vide">Aucun. Dans 🔍 Analyses, « Pas un abonnement » retire un commerçant de la liste.</li>';
   afficherNotion();
 }
 
@@ -355,6 +367,13 @@ $('#form-budgets').addEventListener('submit', async (e) => {
   } catch (err) {
     dire(f, err.message);
   }
+});
+
+$('#liste-pas-abonnements').addEventListener('click', async (e) => {
+  const cle = e.target.dataset.remettre;
+  if (!cle) return;
+  await api(`/api/pas-abonnements?cle=${encodeURIComponent(cle)}`, { method: 'DELETE' }).catch((err) => alert(err.message));
+  chargerReglages();
 });
 
 $('#liste-regles').addEventListener('click', async (e) => {

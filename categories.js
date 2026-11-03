@@ -3,10 +3,11 @@ const { normaliser } = require('./csv');
 
 const CATEGORIES = [
   'Courses', 'Restos & fast-food', 'Transport', 'Logement', 'Abonnements', 'Shopping', 'Loisirs',
-  'Santé', 'Études', 'Proches', 'Retraits', 'Revenus', 'Épargne', 'Autres',
+  'Santé', 'Études', 'Proches', 'Retraits', 'Revenus', 'Épargne', 'Autres', 'Ne compte pas',
 ];
 // Catégories qui ne comptent pas comme des dépenses.
-const HORS_DEPENSES = ['Revenus', 'Épargne'];
+// « Ne compte pas » : choisie à la main pour ce qui ne doit apparaître nulle part (virement entre tes comptes…).
+const HORS_DEPENSES = ['Revenus', 'Épargne', 'Ne compte pas'];
 
 // Mots-clés du commerçant, comparés en mots entiers, sans accents ni majuscules.
 // L'ordre compte : « uber eats » passe avant « uber », « amazon prime » avant « amazon ».

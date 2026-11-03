@@ -60,7 +60,7 @@ function ecrire(nom, valeur) {
 const BUDGETS_DEMO = { Courses: 130, 'Restos & fast-food': 50, Transport: 35, Shopping: 50, Loisirs: 30 };
 
 let operations = lire('operations.json');
-const reglages = { regles: [], budgets: {}, budgetMensuel: 400, ...lire('reglages.json') };
+const reglages = { regles: [], budgets: {}, budgetMensuel: 400, pasAbonnements: [], ...lire('reglages.json') };
 if (!operations) {
   // Premier lancement sans Notion : opérations d'exemple fictives pour voir les graphiques.
   operations = notion.actif ? [] : operationsDemo().map((o) => ({ ...o, demo: true }));
@@ -85,8 +85,8 @@ function reclasser() {
   }
   return changees;
 }
-// Les opérations qui comptent dans les totaux : sans les achats remboursés.
-const comptees = () => operations.filter((o) => !o.rembourse);
+// Les opérations qui comptent dans les totaux : sans les achats remboursés ni « Ne compte pas ».
+const comptees = () => operations.filter((o) => !o.rembourse && o.categorie !== 'Ne compte pas');
 const aujourdhui = () => new Date().toLocaleDateString('sv-SE'); // "2026-11-03", heure de Paris (TZ)
 
 const sauverOperations = () => ecrire('operations.json', operations);
@@ -214,11 +214,28 @@ app.put('/api/budgets', (req, res) => {
   res.json(reglages);
 });
 
+// « Pas un abonnement » : ce commerçant ne sera plus proposé comme abonnement (cle = nom normalisé).
+app.post('/api/pas-abonnements', (req, res) => {
+  const cle = normaliser(req.body?.cle).slice(0, 200);
+  const nom = String(req.body?.nom ?? cle).slice(0, 200);
+  verifier(cle, 'Abonnement inconnu');
+  reglages.pasAbonnements = [...reglages.pasAbonnements.filter((p) => p.cle !== cle), { cle, nom }];
+  sauverReglages();
+  res.json({ ok: true });
+});
+
+app.delete('/api/pas-abonnements', (req, res) => {
+  const cle = normaliser(req.query.cle);
+  reglages.pasAbonnements = reglages.pasAbonnements.filter((p) => p.cle !== cle);
+  sauverReglages();
+  res.json({ ok: true });
+});
+
 // --- Tableau de bord et analyses -----------------------------------------------
 app.get('/api/tableau', (req, res) => {
   const mois = moisDemande(req.query.mois);
   const ops = comptees();
-  const abonnements = analyses.abonnements(ops);
+  const abonnements = analyses.abonnements(ops).filter((a) => !reglages.pasAbonnements.some((p) => p.cle === a.cle));
   res.json({
     mois,
     moisDispo: derniersMois(),

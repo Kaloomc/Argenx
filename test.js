@@ -156,3 +156,16 @@ test('données de démo : abonnements, remboursements et dépense inhabituelle r
   assert.strictEqual(remboursements(ops).size, 4);
   assert.ok(inhabituelles(ops, '2026-08').some((x) => x.description === 'Fnac'));
 });
+
+test('« Ne compte pas » : jamais dans les dépenses ni les entrées, jamais pris pour un remboursement', () => {
+  const op = (id, date, description, montant, categorie) => ({ id, date: date + ' 10:00:00', description, montant, categorie, type: 'transfer' });
+  const ops = [
+    op('a', '2026-10-02', 'Lidl', -30, 'Courses'),
+    op('b', '2026-10-05', 'To Compte Joint', -200, 'Ne compte pas'),
+    op('c', '2026-10-06', 'Payment from Compte Joint', 200, 'Ne compte pas'),
+  ];
+  const r = resumeMois(ops, '2026-10');
+  assert.strictEqual(r.sorties, 30);
+  assert.strictEqual(r.entrees, 0);
+  assert.strictEqual(remboursements(ops).size, 0);
+});

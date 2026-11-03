@@ -141,7 +141,7 @@ function abonnements(ops) {
 // Renvoie une Map id → id de l'opération jumelle.
 function remboursements(ops) {
   const paires = new Map();
-  const libre = (o) => !paires.has(o.id) && !o.pasRembourse && o.categorie !== 'Épargne';
+  const libre = (o) => !paires.has(o.id) && !o.pasRembourse && !['Épargne', 'Ne compte pas'].includes(o.categorie);
   const tri = [...ops].sort((a, b) => a.date.localeCompare(b.date));
   // ponytail: O(n²), suffisant pour quelques milliers d'opérations
   for (const r of tri) {
