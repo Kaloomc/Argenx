@@ -192,4 +192,29 @@ function rythme(ops, mois, budget, jusquau, abos) {
   };
 }
 
-module.exports = { moisDe, decaler, resumeMois, evolution, topCommercants, comparaison, inhabituelles, abonnements, remboursements, rythme };
+// --- Liens avec Repax, par la page Notion commune ----------------------------------
+// Ce qu'Argenx range dans la base « Courses payées » pour Repax : les dépenses de courses d'un mois, montants en positif.
+const coursesDuMois = (ops, mois) => ops
+  .filter((o) => o.categorie === 'Courses' && moisDe(o) === mois)
+  .sort((a, b) => a.date.localeCompare(b.date))
+  .map((o) => ({ date: o.date.slice(0, 10), libelle: o.description, montant: arrondi(-o.montant) }));
+
+// Courses prévues par Repax, d'après ses bases Notion (lignes { nom de colonne: valeur }) :
+// « Liste de courses » (Coût estimé, Acheté) et « Planning des repas » (Date, Restes).
+function previsionRepax(courses, planning, jour) {
+  const aVenir = planning.filter((p) => p.Date && p.Date >= jour);
+  const dates = aVenir.map((p) => p.Date).sort();
+  const cout = (l) => arrondi(l.reduce((s, c) => s + (Number(c['Coût estimé']) || 0), 0));
+  return {
+    du: dates[0] ?? jour,
+    au: dates.at(-1) ?? jour,
+    total: cout(courses),
+    resteAAcheter: cout(courses.filter((c) => !c['Acheté'])),
+    repas: aVenir.filter((p) => !p.Restes).length,
+  };
+}
+
+module.exports = {
+  moisDe, decaler, resumeMois, evolution, topCommercants, comparaison, inhabituelles, abonnements, remboursements, rythme,
+  coursesDuMois, previsionRepax,
+};

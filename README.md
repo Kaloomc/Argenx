@@ -8,7 +8,8 @@ Appli web pour téléphone (PWA installable) qui range tes dépenses à partir d
 4. **classement automatique** par règles (Courses, Transport, Abonnements…), que tu corriges en un geste ;
 5. **tableau de bord du mois** : dépenses par catégorie, entrées et dépenses, 12 derniers mois, top 10 des commerçants ;
 6. **analyses** : abonnements repérés et leur coût annuel, comparaison avec le mois précédent, dépenses inhabituelles, budget par catégorie ;
-7. **résumé mensuel dans Notion** (totaux par catégorie seulement).
+7. **résumé mensuel dans Notion** (totaux par catégorie) et **courses payées** (détail de la seule catégorie Courses, pour Repax) ;
+8. **courses prévues par Repax**, lues dans la même page Notion.
 
 Pas d'IA : tout est fait par règles simples, expliquées plus bas. Les analyses décrivent tes dépenses ; ce ne sont pas des conseils financiers.
 
@@ -50,6 +51,10 @@ Sans Notion configuré, l'appli démarre avec **6 mois d'opérations d'exemple e
 | Toutes les opérations | `data/operations.json`, sur le serveur (le NAS) |
 | Tes règles et budgets | `data/reglages.json` |
 | Totaux par mois et par catégorie | Notion, base « Résumé mensuel » |
+| Dépenses de la catégorie Courses (date, commerçant, montant) | Notion, base « Courses payées » (lue par Repax) |
+
+Argenx partage **la même page Notion** que Repax et Agendix (même `NOTION_TOKEN`, même `NOTION_PAGE_ID`) : les applis ne se parlent pas directement, elles lisent les bases des autres.
+Argenx lit « Liste de courses » et « Planning des repas » de Repax pour la carte « 🛒 Courses ». Le détail des autres catégories ne part jamais vers Notion.
 
 Le dossier `data/` n'est jamais envoyé sur GitHub. Les jetons et mots de passe sont seulement dans les variables d'environnement.
 

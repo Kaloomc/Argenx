@@ -170,74 +170,52 @@ test('« Ne compte pas » : jamais dans les dépenses ni les entrées, jamais pr
   assert.strictEqual(remboursements(ops).size, 0);
 });
 
-test('liens entre applis : clé interne, /api/courses-reelles et prévision de Repax', async (t) => {
+test('liens avec Repax par Notion : courses payées et prévision', () => {
+  const { coursesDuMois, previsionRepax } = require('./analyses');
+  const ops = [
+    { date: '2026-10-09 10:00:00', description: 'Super U', montant: -31.1, categorie: 'Courses' },
+    { date: '2026-10-02 10:00:00', description: 'Lidl', montant: -23.4, categorie: 'Courses' },
+    { date: '2026-10-10 10:00:00', description: 'Netflix.com', montant: -7.99, categorie: 'Abonnements' },
+    { date: '2026-11-01 10:00:00', description: 'Monoprix', montant: -5, categorie: 'Courses' },
+  ];
+  assert.deepStrictEqual(coursesDuMois(ops, '2026-10'), [
+    { date: '2026-10-02', libelle: 'Lidl', montant: 23.4 },
+    { date: '2026-10-09', libelle: 'Super U', montant: 31.1 },
+  ]);
+
+  // Lignes telles que lues dans les bases Notion de Repax.
+  const courses = [{ 'Coût estimé': 12.5, Acheté: true }, { 'Coût estimé': 30, Acheté: false }, { 'Coût estimé': null, Acheté: false }];
+  const planning = [
+    { Date: '2026-11-02', Restes: false }, // passé
+    { Date: '2026-11-03', Restes: false }, { Date: '2026-11-04', Restes: true }, { Date: '2026-11-09', Restes: false },
+  ];
+  assert.deepStrictEqual(previsionRepax(courses, planning, '2026-11-03'), { du: '2026-11-03', au: '2026-11-09', total: 42.5, resteAAcheter: 30, repas: 2 });
+  assert.deepStrictEqual(previsionRepax([], [], '2026-11-03'), { du: '2026-11-03', au: '2026-11-03', total: 0, resteAAcheter: 0, repas: 0 });
+});
+
+test('accès : mot de passe seulement, plus de clé interne', async (t) => {
   const fs = require('fs');
   const os = require('os');
   const path = require('path');
-  const http = require('http');
   const { once } = require('events');
 
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'argenx-test-'));
-  const op = (date, description, montant, type = 'card') => {
-    const o = { date: date + ' 10:00:00', description, montant, solde: null, type };
-    return { id: cle(o), ...o };
-  };
-  const auj = new Date().toLocaleDateString('sv-SE');
-  fs.writeFileSync(path.join(dossier, 'operations.json'), JSON.stringify([
-    op('2026-10-02', 'Lidl', -23.4), op('2026-10-09', 'Super U', -31.1), op('2026-10-10', 'Netflix.com', -7.99),
-    op('2026-10-12', 'Carrefour', -40), op('2026-10-14', 'Carrefour', 40, 'refund'), // remboursé : ne compte pas
-    op('2026-11-01', 'Monoprix', -5), op(auj, 'Lidl', -12),
-  ]));
-
-  // Faux Repax : répond seulement avec la bonne clé.
-  const repax = http.createServer((req, res) => {
-    const ok = req.url === '/api/prevision' && req.headers['x-cle-interne'] === 'cle-test';
-    res.writeHead(ok ? 200 : 401, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(ok ? { du: auj, au: auj, total: 42.5, resteAAcheter: 30, repas: 9 } : { erreur: 'non' }));
-  }).listen(0);
-  await once(repax, 'listening');
-  Object.assign(process.env, {
-    DOSSIER_DONNEES: dossier, APP_PASSWORD: 'mdp-test', CLE_INTERNE: 'cle-test',
-    REPAX_URL: `http://127.0.0.1:${repax.address().port}`,
-  });
+  Object.assign(process.env, { DOSSIER_DONNEES: dossier, APP_PASSWORD: 'mdp-test', CLE_INTERNE: 'cle-test' });
+  delete process.env.NOTION_TOKEN;
   const serveur = require('./server').listen(0);
   await once(serveur, 'listening');
   t.after(() => {
     serveur.close();
-    repax.close();
     fs.rmSync(dossier, { recursive: true, force: true });
   });
   const base = `http://127.0.0.1:${serveur.address().port}`;
-  const get = (chemin, cleInterne, cookie) => fetch(base + chemin, {
-    headers: { ...(cleInterne !== undefined && { 'X-Cle-Interne': cleInterne }), ...(cookie && { Cookie: cookie }) },
-  });
+  const get = (chemin, entetes = {}) => fetch(base + chemin, { headers: entetes });
 
-  const url = '/api/courses-reelles?du=2026-10-01&au=2026-10-31';
-  assert.strictEqual((await get(url, 'cle-test')).status, 200);
-  assert.strictEqual((await get(url, 'mauvaise-cle')).status, 401);
-  assert.strictEqual((await get(url, '')).status, 401);
-  assert.strictEqual((await get(url)).status, 401); // sans en-tête : il faut le cookie
+  assert.strictEqual((await get('/api/tableau')).status, 401);
+  assert.strictEqual((await get('/api/tableau', { 'X-Cle-Interne': 'cle-test' })).status, 401); // l'ancienne clé n'ouvre plus rien
   const connexion = await fetch(base + '/api/connexion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motDePasse: 'mdp-test' }) });
   const cookie = connexion.headers.get('set-cookie').split(';')[0];
-  assert.strictEqual((await get(url, undefined, cookie)).status, 200);
-  assert.strictEqual((await get(url, 'mauvaise-cle', cookie)).status, 401); // une mauvaise clé reste refusée
-
-  assert.deepStrictEqual(await (await get(url, 'cle-test')).json(), {
-    total: 54.5,
-    operations: [
-      { date: '2026-10-02', libelle: 'Lidl', montant: 23.4 },
-      { date: '2026-10-09', libelle: 'Super U', montant: 31.1 },
-    ],
-  });
-  assert.strictEqual((await get('/api/courses-reelles?du=2026-10-31&au=2026-10-01', 'cle-test')).status, 400);
-
-  const p = await (await get('/api/courses-prevues', 'cle-test')).json();
-  const depenseMois = auj.slice(0, 7) === '2026-11' ? 17 : 12;
-  assert.deepStrictEqual(p.prevision, { du: auj, au: auj, total: 42.5, resteAAcheter: 30, repas: 9 });
-  assert.strictEqual(p.depense, depenseMois);
-  assert.strictEqual(p.finDeMois, depenseMois + 30);
-
-  // Repax éteint : réponse vide, sans erreur.
-  process.env.REPAX_URL = 'http://127.0.0.1:1';
-  assert.deepStrictEqual(await (await get('/api/courses-prevues', 'cle-test')).json(), {});
+  assert.strictEqual((await get('/api/tableau', { Cookie: cookie })).status, 200);
+  assert.strictEqual((await get('/api/courses-reelles?du=2026-10-01&au=2026-10-31', { Cookie: cookie })).status, 404);
+  assert.deepStrictEqual(await (await get('/api/courses-prevues', { Cookie: cookie })).json(), {}); // sans Notion : pas de carte
 });

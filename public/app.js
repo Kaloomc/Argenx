@@ -406,7 +406,7 @@ $('#liste-regles').addEventListener('click', async (e) => {
 function afficherNotion() {
   const n = etat.notion;
   $('#aide-notion').textContent = etat.mode === 'notion'
-    ? 'Envoie les totaux par catégorie du mois choisi dans la base « Résumé mensuel » (jamais le détail des opérations). Chaque import envoie aussi les mois concernés.'
+    ? 'Envoie les totaux par catégorie du mois choisi dans « Résumé mensuel », et les dépenses de la catégorie Courses dans « Courses payées » (lues par Repax). Le détail des autres opérations ne part jamais. Chaque import et chaque correction envoient aussi les mois concernés.'
     : 'Notion n’est pas configuré (mode démo). Voir docs/MISE-EN-LIGNE.md pour l’activer.';
   $('#envoyer-notion').disabled = etat.mode !== 'notion' || n.enCours || !mois;
   $('#envoyer-notion').textContent = mois ? `Envoyer ${nomMois(mois)} vers Notion` : 'Envoyer vers Notion';

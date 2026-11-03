@@ -15,13 +15,9 @@ services:
       # OBLIGATOIRE : mot de passe demandé une fois sur chaque téléphone.
       # Vide = l'appli refuse d'écouter sur le réseau (elle sera injoignable).
       - APP_PASSWORD=
-      # Clé partagée avec Repax et Agendix (même valeur dans les trois projets) pour que les applis se parlent
-      - CLE_INTERNE=
-      # Adresse de Repax sur le réseau de la maison : prévision des courses (vide = pas de lien avec Repax)
-      - REPAX_URL=http://192.168.1.45:3011
-      # Jeton de l'intégration Notion (vide = mode démo, pas d'envoi vers Notion)
+      # Mêmes valeurs que Repax et Agendix : la page Notion commune, par laquelle les trois applis partagent leurs données
+      # (vide = mode démo, pas d'envoi vers Notion ni de lien avec Repax)
       - NOTION_TOKEN=
-      # Lien ou identifiant de la page Notion qui accueille la base « Résumé mensuel »
       - NOTION_PAGE_ID=
     volumes:
       - ./app:/app

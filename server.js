@@ -16,9 +16,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- Mot de passe (obligatoire pour être joignable depuis le réseau) ----------
 // Sans APP_PASSWORD, le serveur n'écoute que sur 127.0.0.1 (cet ordinateur seulement).
 // Avec, l'API demande de se connecter une fois ; un cookie garde la session un an.
-// Les autres applis du NAS (Repax, Agendix) passent par l'en-tête X-Cle-Interne = CLE_INTERNE.
+// Les autres applis (Repax, Agendix) ne passent pas par ici : tout se partage par la page Notion commune.
 const MOT_DE_PASSE = process.env.APP_PASSWORD;
-const CLE_INTERNE = process.env.CLE_INTERNE;
 const signer = (s) => crypto.createHmac('sha256', s).update('argenx').digest('hex');
 const jeton = MOT_DE_PASSE && signer(MOT_DE_PASSE);
 const egal = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -35,12 +34,6 @@ app.post('/api/connexion', async (req, res) => {
 });
 
 app.use('/api', (req, res, next) => {
-  const cleRecue = req.get('X-Cle-Interne');
-  if (cleRecue !== undefined) {
-    // Empreintes de même longueur : comparaison à temps constant quelle que soit la clé reçue.
-    if (CLE_INTERNE && egal(signer(cleRecue), signer(CLE_INTERNE))) return next();
-    return res.status(401).json({ erreur: 'Clé interne refusée' });
-  }
   if (!MOT_DE_PASSE || req.path === '/etat') return next();
   const cookie = (req.headers.cookie || '').match(/(?:^|;\s*)argenx=([a-f0-9]+)/)?.[1] || '';
   if (egal(cookie, jeton)) return next();
@@ -113,7 +106,10 @@ const verifier = (ok, message) => {
 const derniersMois = () => [...new Set(operations.map(analyses.moisDe))].sort().reverse();
 const moisDemande = (v) => (MOIS.test(v || '') ? v : derniersMois()[0] || new Date().toISOString().slice(0, 7));
 // Ce qui part vers Notion : les totaux par catégorie, sans les opérations d'exemple.
-const lignesNotion = (mois) => analyses.resumeMois(comptees().filter((o) => !o.demo), mois, reglages.budgets).categories;
+const reelles = () => comptees().filter((o) => !o.demo);
+const lignesNotion = (mois) => analyses.resumeMois(reelles(), mois, reglages.budgets).categories;
+// Et le détail de la catégorie Courses, pour Repax (base « Courses payées »).
+const coursesNotion = (mois) => analyses.coursesDuMois(reelles(), mois);
 // Jusqu'où les opérations sont connues : date de la plus récente (les opérations sont triées, plus récente d'abord).
 const jusquau = () => [operations[0]?.date.slice(0, 10) || aujourdhui(), aujourdhui()].sort()[0];
 
@@ -140,7 +136,7 @@ app.post('/api/import', express.text({ type: () => true, limit: '20mb' }), (req,
   reclasser();
   sauverOperations();
   const mois = [...new Set(r.ajout.map(analyses.moisDe))].sort();
-  if (notion.actif && mois.length) notion.synchroniser(mois, lignesNotion);
+  if (notion.actif && mois.length) notion.synchroniser(mois, lignesNotion, coursesNotion);
   res.json({ ajoutees: r.ajout.length, doublons: r.doublons, ignorees: lu.ignorees, exempleEfface, mois: mois.at(-1) || null });
 });
 
@@ -176,6 +172,8 @@ app.patch('/api/operations/:id', (req, res) => {
   }
   reclasser();
   sauverOperations();
+  // Le mois change de totaux (et peut-être de courses payées) : Notion suit.
+  if (notion.actif && !op.demo) notion.synchroniser([analyses.moisDe(op)], lignesNotion, coursesNotion);
   res.json({ ok: true });
 });
 
@@ -259,35 +257,20 @@ app.get('/api/tableau', (req, res) => {
   });
 });
 
-// --- Liens avec les autres applis du NAS ------------------------------------------
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const reelles = () => comptees().filter((o) => !o.demo);
-
-// Pour Repax : les vraies dépenses de courses (catégorie Courses) entre deux dates, montants en positif.
-app.get('/api/courses-reelles', (req, res) => {
-  const { du, au } = req.query;
-  verifier(DATE.test(du || '') && DATE.test(au || '') && du <= au, 'Dates invalides : du=AAAA-MM-JJ&au=AAAA-MM-JJ');
-  const liste = reelles()
-    .filter((o) => o.categorie === 'Courses' && o.date.slice(0, 10) >= du && o.date.slice(0, 10) <= au)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map((o) => ({ date: o.date.slice(0, 10), libelle: o.description, montant: arrondi(-o.montant) }));
-  res.json({ total: arrondi(liste.reduce((s, o) => s + o.montant, 0)), operations: liste });
-});
-
-// Prévision de Repax (courses des 7 prochains jours). null si Repax n'est pas configuré ou ne répond pas.
+// --- Liens avec Repax, par la page Notion commune ---------------------------------------
+// Prévision de Repax (courses à venir), lue dans ses bases Notion. null sans Notion ou sans Repax dans la page.
 async function previsionRepax() {
-  const url = process.env.REPAX_URL;
-  if (!url || !CLE_INTERNE) return null;
+  if (!notion.actif) return null;
   try {
-    const r = await fetch(new URL('/api/prevision', url), { headers: { 'X-Cle-Interne': CLE_INTERNE }, signal: AbortSignal.timeout(3000) });
-    const p = r.ok ? await r.json() : null;
-    return p && [p.total, p.resteAAcheter, p.repas].every(Number.isFinite) ? p : null;
-  } catch {
+    const [courses, planning] = await Promise.all([notion.lireBase('Liste de courses'), notion.lireBase('Planning des repas')]);
+    return courses && planning ? analyses.previsionRepax(courses, planning, aujourdhui()) : null;
+  } catch (err) {
+    console.error('Repax (Notion) :', err.message);
     return null;
   }
 }
 
-// Courses prévues par Repax comparées aux courses déjà payées ce mois-ci. {} si Repax n'est pas joignable.
+// Courses prévues par Repax comparées aux courses déjà payées ce mois-ci. {} si Repax n'est pas dans la page Notion.
 app.get('/api/courses-prevues', async (req, res) => {
   const p = await previsionRepax();
   if (!p) return res.json({});
@@ -308,7 +291,7 @@ app.post('/api/notion', (req, res) => {
   const mois = req.body?.mois;
   verifier(mois === 'tous' || MOIS.test(mois || ''), 'Mois invalide');
   const liste = mois === 'tous' ? [...new Set(operations.filter((o) => !o.demo).map(analyses.moisDe))] : [mois];
-  notion.synchroniser(liste, lignesNotion);
+  notion.synchroniser(liste, lignesNotion, coursesNotion);
   res.json(notion.etat);
 });
 

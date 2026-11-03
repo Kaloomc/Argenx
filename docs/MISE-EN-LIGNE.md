@@ -11,16 +11,15 @@ Le conteneur récupère le code depuis https://github.com/Kaloomc/Argenx à chaq
 
 ---
 
-## 2. Préparer Notion (facultatif, sinon mode démo)
+## 2. Notion : la page commune avec Repax et Agendix (facultatif, sinon mode démo)
 
-1. Va sur https://www.notion.so/profile/integrations → **Nouvelle intégration**.
-   - Nom : `Argenx`, espace de travail : le tien, type : **Interne**.
-   - Copie le **jeton secret** (il commence par `ntn_`). C'est `NOTION_TOKEN`. Ne le mets jamais dans le code ni sur GitHub.
-2. Dans Notion, crée une page vide **« Argent »** (ou utilise une page de ton système).
-3. Sur cette page : menu **•••** en haut à droite → **Connexions** → ajoute **Argenx**. Sans ça, l'appli ne voit pas la page.
-4. Copie le lien de la page (**•••** → **Copier le lien**) : c'est `NOTION_PAGE_ID` (le lien complet marche).
+Repax, Agendix et Argenx partagent **la même page Notion** : reprends **le jeton (`NOTION_TOKEN`) et la page (`NOTION_PAGE_ID`) de Repax**, copiés depuis le YAML du projet `gestion-repas`.
 
-Au premier envoi, l'appli crée la base **« Résumé mensuel »** dans cette page : une ligne par mois et par catégorie (Mois, Catégorie, Montant, Nombre d'opérations, Budget). **Le détail des opérations ne part jamais vers Notion.**
+Au premier envoi, Argenx crée dans cette page :
+- **« Résumé mensuel »** : une ligne par mois et par catégorie (Mois, Catégorie, Montant, Nombre d'opérations, Budget) ;
+- **« Courses payées »** : le détail de la **seule catégorie Courses** (Libellé, Date, Montant), que Repax lit pour son budget.
+
+**Le détail des autres opérations ne part jamais vers Notion.**
 
 ---
 
@@ -34,10 +33,8 @@ Au premier envoi, l'appli crée la base **« Résumé mensuel »** dans cette pa
    - Source : **Créer un fichier docker-compose.yml**
 3. Colle le contenu de [`docker-compose.yml`](../docker-compose.yml) et remplis :
    - `APP_PASSWORD=` un mot de passe à toi — **obligatoire** : sans lui, l'appli refuse d'écouter sur le réseau (ce sont tes comptes !)
-   - `CLE_INTERNE=` la clé partagée avec Repax et Agendix (voir la section « Relier Argenx à Repax » plus bas ; vide = pas de lien)
-   - `REPAX_URL=http://192.168.1.45:3011` (déjà rempli : l'adresse de Repax sur le réseau de la maison)
-   - `NOTION_TOKEN=ntn_...` (ou vide pour le mode démo)
-   - `NOTION_PAGE_ID=https://www.notion.so/...`
+   - `NOTION_TOKEN=` le même que Repax (ou vide pour le mode démo)
+   - `NOTION_PAGE_ID=` le même que Repax
 4. **Suivant** → (pas besoin de Web Station) → **Terminé**. Le projet démarre.
 5. Vérifie : **Conteneur** → `argenx` → **Journal**. Tu dois voir à la fin :
    `Argenx sur http://localhost:3012 (Notion activé)`
@@ -114,35 +111,16 @@ Pour changer le mot de passe ou un jeton : **Projet** → `argenx` → **Arrête
 
 ---
 
-## 9. Relier Argenx à Repax (budget courses)
+## 9. Relier Argenx à Repax par Notion (budget courses)
 
-Repax (repas) et Argenx (argent) se parlent sur le réseau de la maison, avec une **clé partagée** :
+Repax (repas) et Argenx (argent) ne se parlent pas directement : tout passe par la page Notion commune (étape 2).
 
-- Repax lit dans Argenx tes **vraies dépenses de courses** (catégorie Courses), à la place de la saisie à la main ;
-- Argenx lit dans Repax les **courses prévues sur les 7 prochains jours** et affiche, dans 📊 Mois, une carte « 🛒 Courses » : prévu, dépensé ce mois-ci, et fin de mois estimée (dépensé + reste à acheter).
+- Argenx range tes **vraies dépenses de courses** (catégorie Courses) dans la base « Courses payées » : Repax les compte dans son budget, à la place de la saisie à la main. Elles partent à chaque import, à chaque correction de catégorie, et avec le bouton « Envoyer vers Notion » des Réglages (après une nouvelle règle, renvoie les mois concernés).
+- Argenx lit les bases « Liste de courses » et « Planning des repas » de Repax et affiche, dans 📊 Mois, une carte « 🛒 Courses » : prévu, dépensé ce mois-ci, et fin de mois estimée (dépensé + reste à acheter).
 
-1. Prends la clé déjà créée pour Agendix (sinon, crée-en une dans un terminal) :
-
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
-   ```
-
-2. **Container Manager** → **Projet** → `argenx` → **Arrêter** → **Modifier** le YAML :
-   - `CLE_INTERNE=` **la même clé** que dans Repax et Agendix
-   - `REPAX_URL=http://192.168.1.45:3011`
-
-   → **Enregistrer** → **Démarrer**. Fais pareil côté Repax (sa clé `CLE_INTERNE` et `ARGENX_URL=http://192.168.1.45:3012`).
-
-3. Vérification depuis un ordinateur de la maison (remplace `TA_CLE`) :
-
-   ```bash
-   curl -H "X-Cle-Interne: TA_CLE" "http://192.168.1.45:3012/api/courses-reelles?du=2026-11-01&au=2026-11-30"
-   ```
-
-   Réponse attendue : `{"total":…,"operations":[…]}`. Avec une mauvaise clé : `Clé interne refusée`.
-
-Si Repax est arrêté ou mal relié, Argenx n'affiche simplement pas la carte Courses : le reste marche normalement.
-Les opérations d'exemple (mode démo) ne sont jamais envoyées à Repax.
+Il suffit que les deux projets aient **le même `NOTION_TOKEN` et le même `NOTION_PAGE_ID`**.
+Si les bases de Repax ne sont pas dans la page, Argenx n'affiche simplement pas la carte Courses : le reste marche normalement.
+Les opérations d'exemple (mode démo) ne partent jamais vers Notion.
 
 ---
 
@@ -157,5 +135,5 @@ Les opérations d'exemple (mode démo) ne sont jamais envoyées à Repax.
 | La page ne s'ouvre pas depuis la 4G | Redirection Freebox (étape 6) ou pare-feu DSM |
 | Avertissement de certificat | Étape 5 : le certificat n'est pas associé au port 8445 |
 | `fatal: detected dubious ownership` | La ligne `safe.directory` manque dans la commande du YAML |
-| Pas de carte « 🛒 Courses » dans 📊 Mois | `CLE_INTERNE` différente entre Argenx et Repax, `REPAX_URL` vide, ou Repax arrêté |
-| Repax ne voit pas les dépenses de courses | Même chose côté Repax (`CLE_INTERNE`, `ARGENX_URL`), ou les achats ne sont pas dans la catégorie Courses |
+| Pas de carte « 🛒 Courses » dans 📊 Mois | `NOTION_PAGE_ID` différent entre Argenx et Repax, ou Repax pas encore lancé avec Notion |
+| Repax ne voit pas les dépenses de courses | Même page Notion ? Achats bien dans la catégorie Courses ? Sinon, Réglages → « Envoyer vers Notion » |
