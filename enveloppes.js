@@ -3,16 +3,20 @@
 const { normaliser, arrondi } = require('./csv');
 const { contient } = require('./categories');
 
-// Réglages de départ (modifiables dans ⚙️ Réglages) : alimentation 400 €/mois, achats libres 60 €, fixes 150 €.
+// Réglages de départ (modifiables dans ⚙️ Réglages) : tout tient dans 460 €/mois.
+// Alimentation 400 € (courses ≈ 182 € + resto ≈ 217 €), achats libres 60 € dont l'abonnement Claude (≈ 22 €).
 const ENVELOPPES_DEFAUT = [
   { id: 'courses', nom: 'Courses', parSemaine: 42, categories: ['Courses'] },
   {
     id: 'resto', nom: 'Resto & fast-food', parSemaine: 50, categories: ['Restos & fast-food'],
-    // Sous-plafond compté dans l'enveloppe resto, sur le mois.
+    // Uber Eats compte dans le fast-food, avec en plus son propre plafond sur le mois.
     plafond: { nom: 'Uber Eats', parMois: 26, motsCles: ['uber eats', 'ubereats', 'deliveroo', 'just eat'] },
   },
-  { id: 'libres', nom: 'Achats libres', parSemaine: 15, categories: ['Shopping', 'Loisirs', 'Autres', 'Santé', 'Études', 'Retraits', 'Proches'] },
-  { id: 'fixes', nom: 'Fixes', parMois: 150, categories: ['Logement', 'Abonnements', 'Transport'] },
+  {
+    id: 'libres', nom: 'Achats libres', parSemaine: 9,
+    categories: ['Shopping', 'Loisirs', 'Transport', 'Santé', 'Études', 'Logement', 'Retraits', 'Proches', 'Autres'],
+  },
+  { id: 'fixes', nom: 'Abonnements', parMois: 22, categories: ['Abonnements'] },
 ];
 
 const SEMAINES_PAR_MOIS = 52 / 12;

@@ -63,12 +63,23 @@ function ecrire(nom, valeur) {
 const BUDGETS_DEMO = { Courses: 130, 'Restos & fast-food': 50, Transport: 35, Shopping: 50, Loisirs: 30 };
 
 let operations = lire('operations.json');
+// Basic-Fit est remboursé par le virement « salle » : il ne compte dans aucune enveloppe (règle supprimable dans ⚙️ Réglages).
+const REGLE_SALLE = { motCle: 'Basic-Fit', categorie: 'Ne compte pas' };
 const REGLAGES_DEFAUT = () => ({
-  regles: [], budgets: {}, budgetMensuel: 400, pasAbonnements: [],
+  version: 2,
+  regles: [{ ...REGLE_SALLE }], budgets: {}, budgetMensuel: 400, pasAbonnements: [],
   enveloppes: structuredClone(enveloppes.ENVELOPPES_DEFAUT),
-  revenusSurs: 495, // revenus fiables par mois : la base du budget
+  revenusSurs: 460, // revenus fiables par mois (parents 400 €, mère 60 €) : la base du budget
 });
-const reglages = { ...REGLAGES_DEFAUT(), ...lire('reglages.json') };
+const enregistres = lire('reglages.json');
+const reglages = { ...REGLAGES_DEFAUT(), ...enregistres };
+// Réglages enregistrés avant la version 2 : nouvelles valeurs par défaut, une seule fois, sans écraser ce que tu as changé.
+if (enregistres && (enregistres.version ?? 1) < 2) {
+  if (reglages.enveloppes.find((e) => e.id === 'fixes')?.parMois === 150) reglages.enveloppes = structuredClone(enveloppes.ENVELOPPES_DEFAUT);
+  if (reglages.revenusSurs === 495) reglages.revenusSurs = 460;
+  if (!reglages.regles.some((r) => normaliser(r.motCle) === normaliser(REGLE_SALLE.motCle))) reglages.regles.push({ ...REGLE_SALLE });
+  reglages.version = 2;
+}
 if (!operations) {
   // Premier lancement sans Notion : opérations d'exemple fictives pour voir les graphiques.
   operations = notion.actif ? [] : operationsDemo().map((o) => ({ ...o, demo: true }));

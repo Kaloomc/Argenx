@@ -264,12 +264,12 @@ test('enveloppes : reste de la semaine, plafond Uber Eats, états et alertes', (
   assert.strictEqual(e.resto.depense, 12); // l'Uber Eats de dimanche est sur la semaine d'avant
   assert.strictEqual(e.resto.etat, 'vert');
   assert.deepStrictEqual(e.resto.plafond, { nom: 'Uber Eats', budget: 26, depense: 24, reste: 2, etat: 'orange' }); // sur le mois
-  assert.strictEqual(e.libres.etat, 'rouge'); // 20 € pour 15 €
+  assert.strictEqual(e.libres.etat, 'rouge'); // 20 € pour 9 €
   assert.strictEqual(e.fixes.mensuelle, true);
   assert.strictEqual(e.fixes.depense, 10);
   // Le chiffre principal ne compte que les enveloppes de la semaine.
-  assert.strictEqual(s.budget, 107);
-  assert.strictEqual(s.reste, 107 - 30 - 12 - 20);
+  assert.strictEqual(s.budget, 101);
+  assert.strictEqual(s.reste, 101 - 30 - 12 - 20);
   assert.strictEqual(s.joursRestants, 5);
   assert.strictEqual(s.alertes[0].etat, 'rouge');
   assert.ok(s.alertes.some((a) => a.texte.startsWith('Uber Eats : 92 % utilisés')), JSON.stringify(s.alertes));
@@ -278,8 +278,8 @@ test('enveloppes : reste de la semaine, plafond Uber Eats, états et alertes', (
   const em = Object.fromEntries(m.enveloppes.map((x) => [x.id, x]));
   assert.strictEqual(em.courses.budget, 180); // 42 € × 30 jours / 7
   assert.strictEqual(em.resto.depense, 36);
-  assert.strictEqual(m.budget, 608.58); // 180 + 214,29 + 64,29 + 150
-  assert.strictEqual(budgetMensuel(ENVELOPPES_DEFAUT), 613.67); // 182 + 216,67 + 65 + 150
+  assert.strictEqual(m.budget, 454.86); // 180 + 214,29 + 38,57 + 22
+  assert.strictEqual(budgetMensuel(ENVELOPPES_DEFAUT), 459.67); // 182 + 216,67 + 39 + 22 : tient dans 460 €
 });
 
 test('enveloppes : plafond à 0 € sans dépense = pas d’alerte', () => {

@@ -90,13 +90,16 @@ L'accueil répond à « il me reste combien cette semaine ? ». Chaque enveloppe
 |---|---|---|
 | Courses | 42 €/semaine | Courses |
 | Resto & fast-food | 50 €/semaine, **dont Uber Eats 26 €/mois** (Uber Eats, Deliveroo, Just Eat) | Restos & fast-food |
-| Achats libres | 15 €/semaine | Shopping, Loisirs, Autres, Santé, Études, Retraits, Proches |
-| Fixes | 150 €/mois | Logement, Abonnements, Transport |
+| Achats libres | 9 €/semaine | Shopping, Loisirs, Transport, Santé, Études, Logement, Retraits, Proches, Autres |
+| Abonnements | 22 €/mois (Claude) | Abonnements |
+
+Total ≈ 460 €/mois (alimentation ≈ 400 € + achats libres 60 € dont l'abonnement), pour 460 € de revenus sûrs (parents 400 €, mère 60 €).
+Basic-Fit est remboursé par le virement « salle » : une règle le met en **Ne compte pas** (supprimable dans ⚙️ Réglages → Mes règles).
 
 - La semaine va du lundi au dimanche. La bascule **Semaine / Mois** montre les mêmes enveloppes sur le mois (42 €/semaine → 180 € en novembre).
-- Le grand chiffre = ce qui reste dans les enveloppes de la semaine (les fixes, au mois, n'y entrent pas).
+- Le grand chiffre = ce qui reste dans les enveloppes de la semaine (les abonnements, au mois, n'y entrent pas).
 - Trois couleurs seulement : **vert** ça tient ; **orange** 80 % utilisés, ou nettement plus vite que le temps (par exemple 60 % dépensés alors que 30 % de la semaine est passée) ; **rouge** dépassé.
-- Tout se règle dans ⚙️ Réglages : montants, plafond Uber Eats, revenus sûrs (495 € par défaut) et quelle catégorie va dans quelle enveloppe. L'appli affiche si le budget prévu dépasse les revenus sûrs.
+- Tout se règle dans ⚙️ Réglages : montants, plafond Uber Eats, revenus sûrs (460 € par défaut) et quelle catégorie va dans quelle enveloppe. L'appli affiche si le budget prévu dépasse les revenus sûrs.
 
 ## Le budget du mois (onglet Insights)
 
