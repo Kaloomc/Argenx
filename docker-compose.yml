@@ -23,6 +23,8 @@ services:
       # Revolut en automatique (Enable Banking) : identifiant de l'application ; vide = pas de connexion.
       # La clé secrète va dans /docker/argenx/app/data/enablebanking.pem (jamais sur GitHub).
       - ENABLE_BANKING_APP_ID=
+      # Widget iPhone (Scriptable, voir docs/widget-argent.js) : long jeton aléatoire (16 caractères au minimum) ; vide = widget désactivé.
+      - WIDGET_TOKEN=
     volumes:
       - ./app:/app
     working_dir: /app

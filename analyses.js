@@ -1,22 +1,11 @@
 // Calculs du tableau de bord et des analyses. Décrit les dépenses, sans conseil financier.
 const { normaliser, arrondi } = require('./csv');
-const { CATEGORIES, HORS_DEPENSES } = require('./categories');
+const { CATEGORIES, HORS_DEPENSES, enseigne } = require('./categories');
 
 const moisDe = (op) => op.date.slice(0, 7);
 const estDepense = (op) => !HORS_DEPENSES.includes(op.categorie);
 const jours = (a, b) => (Date.parse(b.slice(0, 10)) - Date.parse(a.slice(0, 10))) / 864e5;
 const ajouterJours = (iso, n) => new Date(Date.parse(iso.slice(0, 10)) + n * 864e5).toISOString().slice(0, 10);
-
-// "2026-01" + (-1) → "2025-12"
-function decaler(mois, n) {
-  const [a, m] = mois.split('-').map(Number);
-  return new Date(Date.UTC(a, m - 1 + n, 1)).toISOString().slice(0, 7);
-}
-
-const mediane = (xs) => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
-};
 
 // Totaux d'un mois par catégorie. Montant positif : dépensé (net des remboursements),
 // mis de côté pour l'Épargne, reçu pour les Revenus.
@@ -41,21 +30,13 @@ function resumeMois(ops, mois, budgets = {}) {
   };
 }
 
-function evolution(ops, mois, n = 12) {
-  return Array.from({ length: n }, (_, i) => {
-    const m = decaler(mois, i - n + 1);
-    const { entrees, sorties } = resumeMois(ops, m);
-    return { mois: m, entrees, sorties };
-  });
-}
-
 // Plus grosses dépenses par commerçant (sans les virements à des proches ni les retraits).
 function topCommercants(ops, mois, n = 10) {
   const parNom = new Map();
   for (const o of ops) {
     if (moisDe(o) !== mois || !estDepense(o) || ['Proches', 'Retraits'].includes(o.categorie)) continue;
-    const k = normaliser(o.description);
-    const c = parNom.get(k) || { nom: o.description, categorie: o.categorie, montant: 0, nb: 0 };
+    const { nom, cle: k } = enseigne(o.description);
+    const c = parNom.get(k) || { nom, categorie: o.categorie, montant: 0, nb: 0 };
     c.montant -= o.montant;
     c.nb++;
     parNom.set(k, c);
@@ -65,30 +46,6 @@ function topCommercants(ops, mois, n = 10) {
     .sort((a, b) => b.montant - a.montant)
     .slice(0, n)
     .map((c) => ({ ...c, montant: arrondi(c.montant) }));
-}
-
-function comparaison(ops, mois) {
-  const ce = resumeMois(ops, mois).categories;
-  const avant = resumeMois(ops, decaler(mois, -1)).categories;
-  const montant = (liste, c) => liste.find((x) => x.categorie === c)?.montant ?? 0;
-  return CATEGORIES
-    .filter((c) => !HORS_DEPENSES.includes(c))
-    .map((c) => ({ categorie: c, ceMois: montant(ce, c), avant: montant(avant, c) }))
-    .filter((c) => c.ceMois || c.avant)
-    .map((c) => ({ ...c, ecart: arrondi(c.ceMois - c.avant) }))
-    .sort((a, b) => Math.abs(b.ecart) - Math.abs(a.ecart));
-}
-
-// Dépenses du mois à plus de 3 fois la médiane de leur catégorie (sur tout l'historique,
-// à partir de 5 dépenses connues dans la catégorie).
-function inhabituelles(ops, mois) {
-  const parCat = new Map();
-  for (const o of ops) if (o.montant < 0 && estDepense(o)) parCat.set(o.categorie, [...(parCat.get(o.categorie) || []), -o.montant]);
-  const medianes = new Map([...parCat].filter(([, xs]) => xs.length >= 5).map(([c, xs]) => [c, mediane(xs)]));
-  return ops
-    .filter((o) => moisDe(o) === mois && o.montant < 0 && medianes.has(o.categorie) && -o.montant > 3 * medianes.get(o.categorie))
-    .map((o) => ({ date: o.date.slice(0, 10), description: o.description, categorie: o.categorie, montant: -o.montant, mediane: arrondi(medianes.get(o.categorie)) }))
-    .sort((a, b) => b.montant - a.montant);
 }
 
 // Abonnements : même commerçant, montant à ±10 %, tous les 25 à 35 jours, au moins 2 fois.
@@ -171,40 +128,51 @@ function nettes(ops) {
     .filter((o) => o.montant !== 0);
 }
 
-// Où en est le budget total du mois. jusquau : date ("2026-11-15") jusqu'où les opérations sont connues.
-// Projection : dépensé + (dépenses courantes par jour × jours restants) + abonnements pas encore passés ce mois-ci.
-// En début de mois, le rythme constaté sur quelques jours est mélangé avec celui des 3 mois précédents.
-function rythme(ops, mois, budget, jusquau, abos) {
+// Où en est le budget du mois, calculé sur le mois seulement (aucun mois précédent n'entre dans les chiffres).
+// budget : ce qui est disponible à dépenser dans le mois (null si non réglé).
+// jusquau : date ("2026-11-15") jusqu'où les opérations sont connues.
+// Projection : rythme constaté depuis le début du mois, donnée seulement à partir de 7 jours (avant, trop incertaine).
+function rythme(ops, mois, budget, jusquau) {
   const { sorties } = resumeMois(ops, mois);
-  const joursDans = (mm) => { const [a, m] = mm.split('-').map(Number); return new Date(Date.UTC(a, m, 0)).getUTCDate(); };
-  const nbJours = joursDans(mois);
+  const [a, m] = mois.split('-').map(Number);
+  const nbJours = new Date(Date.UTC(a, m, 0)).getUTCDate();
   const moisConnu = jusquau.slice(0, 7);
   const enCours = moisConnu === mois;
   const ecoules = enCours ? Number(jusquau.slice(8, 10)) : mois < moisConnu ? nbJours : 0;
-  const actifs = abos.filter((x) => x.actif);
-  const aVenir = enCours
-    ? actifs.filter((x) => x.dernier.slice(0, 7) < mois && x.prochain.slice(0, 7) <= mois).sort((x, y) => x.prochain.localeCompare(y.prochain))
-    : [];
-  const totalAVenir = arrondi(aVenir.reduce((s, x) => s + x.montant, 0));
-  // Dépenses courantes d'un mois : sans les abonnements, qui ne se répètent pas dans le mois.
-  const cles = new Set(actifs.map((x) => x.cle));
-  const courantes = (mm) => resumeMois(ops, mm).sorties -
-    ops.filter((o) => moisDe(o) === mm && o.montant < 0 && cles.has(normaliser(o.description))).reduce((s, o) => s - o.montant, 0);
-  const connus = new Set(ops.map(moisDe));
-  const avant = [1, 2, 3].map((n) => decaler(mois, -n)).filter((mm) => connus.has(mm));
-  const habituel = avant.length ? avant.reduce((s, mm) => s + Math.max(0, courantes(mm)) / joursDans(mm), 0) / avant.length : 0;
-  const poids = avant.length ? 7 : 0; // l'habitude compte comme 7 jours observés
-  const parJourConstate = ecoules + poids ? (Math.max(0, courantes(mois)) + habituel * poids) / (ecoules + poids) : 0;
-  const reste = budget ? arrondi(budget - sorties) : null;
+  const restants = nbJours - ecoules;
+  const reste = budget == null ? null : arrondi(budget - sorties);
   return {
-    budget, depense: sorties, reste, enCours, jusquau,
-    joursRestants: nbJours - ecoules,
-    aVenir: aVenir.map(({ nom, montant, prochain }) => ({ nom, montant, prochain })),
-    totalAVenir,
-    projection: arrondi(sorties + parJourConstate * (nbJours - ecoules) + totalAVenir),
-    parJour: budget && enCours && nbJours > ecoules ? arrondi(Math.max(0, reste - totalAVenir) / (nbJours - ecoules)) : null,
-    abonnementsParMois: arrondi(actifs.reduce((s, x) => s + x.montant, 0)),
+    budget, depense: sorties, reste, enCours, jusquau, nbJours, ecoules,
+    joursRestants: restants,
+    projection: ecoules >= 7 || !enCours ? arrondi(sorties + (ecoules ? sorties / ecoules : 0) * restants) : null,
+    parJour: reste != null && enCours && restants > 0 ? arrondi(Math.max(0, reste) / restants) : null,
   };
+}
+
+// Épargne à reconstituer ce mois-ci. objectif : { montant, mois } ou null.
+// Remis = ce qui a été mis de côté dans le mois (virements vers un coffre, net des retraits depuis un coffre).
+function epargneAReconstituer(ops, mois, objectif) {
+  if (!objectif || objectif.mois !== mois || !(objectif.montant > 0)) return null;
+  const remis = Math.min(objectif.montant, Math.max(0, resumeMois(ops, mois).epargne));
+  return { objectif: objectif.montant, remis: arrondi(remis), restant: arrondi(objectif.montant - remis), atteint: remis >= objectif.montant };
+}
+
+// Phrases « à surveiller » (3 au maximum), fondées sur le mois en cours seulement. r : résultat de rythme().
+function phrases(categories, r) {
+  const euro = (x) => `${Math.round(x)} €`;
+  const partMois = r.enCours ? r.ecoules / r.nbJours : 1;
+  const sorties = [];
+  if (r.reste != null && r.reste < 0) sorties.push({ etat: 'rouge', texte: `Budget du mois dépassé de ${euro(-r.reste)}` });
+  for (const c of categories) {
+    if (!c.budget) continue;
+    const part = c.montant / c.budget;
+    if (part > 1) sorties.push({ etat: 'rouge', texte: `${c.categorie} : ${euro(c.montant - c.budget)} au-dessus du budget (${euro(c.budget)})` });
+    else if (part >= 0.8) sorties.push({ etat: 'orange', texte: `${c.categorie} : ${Math.round(part * 100)} % du budget, il reste ${euro(c.budget - c.montant)}` });
+    else if (r.enCours && part > partMois + 0.15) {
+      sorties.push({ etat: 'orange', texte: `${c.categorie} : ${Math.round(part * 100)} % du budget au ${r.ecoules}${r.ecoules === 1 ? 'er' : 'e'} jour du mois` });
+    }
+  }
+  return sorties.sort((x, y) => (y.etat === 'rouge') - (x.etat === 'rouge')).slice(0, 3);
 }
 
 // --- Liens avec Repax, par la page Notion commune ----------------------------------
@@ -230,6 +198,6 @@ function previsionRepax(courses, planning, jour) {
 }
 
 module.exports = {
-  moisDe, decaler, resumeMois, evolution, topCommercants, comparaison, inhabituelles, abonnements, remboursements, rythme,
+  moisDe, resumeMois, topCommercants, abonnements, remboursements, rythme, epargneAReconstituer, phrases,
   coursesDuMois, previsionRepax, nettes,
 };

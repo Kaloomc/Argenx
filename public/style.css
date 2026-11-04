@@ -210,3 +210,9 @@ strong.orange { color: var(--orange); }
 #revenus-mois h3 { margin: 0; }
 #revenus-mois .chiffres > div { text-align: center; }
 .cout small { display: block; text-align: right; font-weight: 400; font-size: .75rem; }
+.reste .resume { margin-bottom: 8px; }
+.reste p { margin: 8px 0 0; }
+.reste .alertes { margin: 10px 0 0; }
+.epargne { margin-top: 12px; display: grid; gap: 6px; }
+.epargne .ligne-budget { align-items: baseline; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

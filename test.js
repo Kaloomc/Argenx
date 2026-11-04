@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { lireRevolut, fusionner, cle } = require('./csv');
 const { classer } = require('./categories');
-const { resumeMois, abonnements, inhabituelles, remboursements, rythme } = require('./analyses');
+const { resumeMois, abonnements, remboursements, rythme, epargneAReconstituer, phrases, topCommercants } = require('./analyses');
 const operationsDemo = require('./demo');
 
 const CSV_EN = [
@@ -127,34 +127,61 @@ test('achats remboursés : ils s’annulent', () => {
   assert.strictEqual(remboursements(ops.map((o) => (['c', 'd'].includes(o.id) ? { ...o, pasRembourse: true } : o))).has('c'), false);
 });
 
-test('budget du mois : reste, rythme et abonnements à venir', () => {
+test('budget du mois : reste, rythme et épargne à reconstituer, sur le mois en cours seulement', () => {
   const op = (date, description, montant, categorie) => ({ date: date + ' 10:00:00', description, montant, categorie });
   const ops = [
-    op('2026-10-08', 'Netflix.com', -8, 'Abonnements'), op('2026-11-01', 'Payment from Papa', 400, 'Revenus'),
+    op('2026-11-01', 'Payment from Papa', 400, 'Revenus'),
     op('2026-11-02', 'Lidl', -60, 'Courses'), op('2026-11-10', 'Izly', -40, 'Restos & fast-food'),
-    op('2026-09-08', 'Netflix.com', -8, 'Abonnements'),
-    op('2026-09-15', 'Lidl', -300, 'Courses'), op('2026-10-15', 'Super U', -310, 'Courses'), // habitude : 10 €/jour
+    // Les mois précédents ne comptent pour rien, même énormes.
+    op('2026-09-15', 'Lidl', -300, 'Courses'), op('2026-10-15', 'Super U', -310, 'Courses'), op('2026-10-20', 'To EUR Savings', 117, 'Épargne'),
   ];
-  const r = rythme(ops, '2026-11', 400, '2026-11-10', abonnements(ops));
+  // 400 € − 117 € d'épargne à remettre = 283 € disponibles
+  const r = rythme(ops, '2026-11', 283, '2026-11-10');
   assert.strictEqual(r.depense, 100);
-  assert.strictEqual(r.reste, 300);
+  assert.strictEqual(r.reste, 183);
   assert.strictEqual(r.joursRestants, 20);
-  assert.deepStrictEqual(r.aVenir.map((x) => x.nom), ['Netflix.com']); // pas encore passé en novembre
-  assert.strictEqual(r.parJour, 14.6); // (300 − 8) / 20
-  assert.strictEqual(r.projection, 308); // 100 + 10 €/jour × 20 + 8 (même rythme que d'habitude)
-  // Mois terminé
-  const fini = rythme(ops, '2026-10', 400, '2026-11-10', abonnements(ops));
+  assert.strictEqual(r.parJour, 9.15); // 183 / 20
+  assert.strictEqual(r.projection, 300); // 100 € en 10 jours → 10 €/jour pendant 20 jours de plus, sans l'historique
+  assert.strictEqual(rythme(ops, '2026-11', 283, '2026-11-04').projection, null); // trop tôt pour projeter
+  assert.strictEqual(rythme(ops, '2026-11', null, '2026-11-10').reste, null);
+  const fini = rythme(ops, '2026-10', 400, '2026-11-10');
   assert.strictEqual(fini.enCours, false);
-  assert.strictEqual(fini.projection, 318);
+  assert.strictEqual(fini.parJour, null);
+
+  // Épargne : virements vers un coffre ce mois-ci (catégorie Épargne, montant négatif sur le compte), net des retraits.
+  const objectif = { montant: 117, mois: '2026-11' };
+  assert.deepStrictEqual(epargneAReconstituer(ops, '2026-11', objectif), { objectif: 117, remis: 0, restant: 117, atteint: false });
+  const avec = [...ops, op('2026-11-05', 'To EUR Savings', -30, 'Épargne'), op('2026-11-06', 'From EUR Savings', 10, 'Épargne')];
+  assert.deepStrictEqual(epargneAReconstituer(avec, '2026-11', objectif), { objectif: 117, remis: 20, restant: 97, atteint: false });
+  const fait = [...avec, op('2026-11-07', 'To EUR Savings', -100, 'Épargne')];
+  assert.deepStrictEqual(epargneAReconstituer(fait, '2026-11', objectif), { objectif: 117, remis: 117, restant: 0, atteint: true });
+  assert.strictEqual(epargneAReconstituer(ops, '2026-10', objectif), null); // un autre mois : rien
+  assert.strictEqual(epargneAReconstituer(ops, '2026-11', null), null);
+
+  // Phrases « à surveiller » : mois en cours seulement, 3 au maximum.
+  const au4 = rythme([op('2026-11-02', 'Lidl', -57.6, 'Courses'), op('2026-11-03', 'Izly', -23.85, 'Restos & fast-food')], '2026-11', 283, '2026-11-04');
+  const cat = (categorie, montant, budget) => ({ categorie, montant, budget, nb: 1 });
+  assert.deepStrictEqual(phrases([cat('Courses', 57.6, 140), cat('Restos & fast-food', 23.85, 40), cat('Transport', 0, 30)], au4), [
+    { etat: 'orange', texte: 'Courses : 41 % du budget au 4e jour du mois' },
+    { etat: 'orange', texte: 'Restos & fast-food : 60 % du budget au 4e jour du mois' },
+  ]);
+  const depasse = phrases([cat('Courses', 152, 140), cat('Loisirs', 1, 30)], au4);
+  assert.deepStrictEqual(depasse, [{ etat: 'rouge', texte: 'Courses : 12 € au-dessus du budget (140 €)' }]);
 });
 
-test('données de démo : abonnements, remboursements et dépense inhabituelle repérés', () => {
+test('enseignes : Utile, Super U… regroupés dans le top des commerçants', () => {
+  const op = (description, montant) => ({ date: '2026-11-04 10:00:00', description, montant, categorie: classer({ description, montant, type: 'card' }) });
+  assert.strictEqual(classer({ description: 'Utile', montant: -20, type: 'card' }), 'Courses');
+  const top = topCommercants([op('Utile', -20), op('Super U', -30), op('U Express', -5)], '2026-11');
+  assert.deepStrictEqual(top.map((c) => [c.nom, c.montant, c.nb]), [['Super U', 55, 3]]);
+});
+
+test('données de démo : abonnements et remboursements repérés', () => {
   const ops = operationsDemo(new Date(2026, 10, 3)).map((o) => ({ ...o, categorie: classer(o) }));
   const noms = abonnements(ops).map((x) => x.nom);
   for (const n of ['Netflix.com', 'Spotify', 'Free Mobile']) assert.ok(noms.includes(n), n);
   assert.ok(!noms.some((n) => ['Lidl', 'Cash at Distributeur', 'Payment from Papa'].includes(n)), noms.join(', '));
   assert.strictEqual(remboursements(ops).size, 4);
-  assert.ok(inhabituelles(ops, '2026-08').some((x) => x.description === 'Fnac'));
 });
 
 test('« Ne compte pas » : jamais dans les dépenses ni les entrées, jamais pris pour un remboursement', () => {
@@ -597,4 +624,149 @@ test('rafraîchir Notion : refusé en mode démo, et relit les bases (cache des 
   version = 2;
   assert.deepStrictEqual(await notion.rafraichir(), { 'Liste de courses': 2, 'Planning des repas': 3, 'Présence': null }); // Présence absente : null, pas d'erreur
   assert.ok(interrogees.includes('Liste de courses-v2')); // l'ancien identifiant n'est plus utilisé
+});
+
+test('reste à dépenser et épargne à reconstituer : routes', async (t) => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { once } = require('events');
+  if (!process.env.DOSSIER_DONNEES) {
+    Object.assign(process.env, { DOSSIER_DONNEES: fs.mkdtempSync(path.join(os.tmpdir(), 'argenx-test-')), APP_PASSWORD: 'mdp-test' });
+  }
+  delete process.env.NOTION_TOKEN;
+  const serveur = require('./server').listen(0);
+  await once(serveur, 'listening');
+  t.after(() => serveur.close());
+  const base = `http://127.0.0.1:${serveur.address().port}`;
+  const connexion = await fetch(base + '/api/connexion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motDePasse: process.env.APP_PASSWORD }) });
+  const Cookie = connexion.headers.get('set-cookie').split(';')[0];
+  const appel = async (methode, chemin, corps, entetes = {}) => {
+    const r = await fetch(base + chemin, { method: methode, headers: { Cookie, 'Content-Type': 'application/json', ...entetes }, body: corps && JSON.stringify(corps) });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+
+  assert.strictEqual((await appel('PUT', '/api/epargne', { montant: -5 })).status, 400);
+  assert.deepStrictEqual((await appel('PUT', '/api/epargne', { montant: 117, mois: '2026-11' })).json, { montant: 117, mois: '2026-11' });
+  assert.strictEqual((await appel('PUT', '/api/epargne', { montant: 117, mois: 'novembre' })).status, 400);
+  const mois = new Date().toLocaleDateString('sv-SE').slice(0, 7);
+  await appel('PUT', '/api/epargne', { montant: 117 }); // mois en cours par défaut
+  const reglages = (await appel('GET', '/api/reglages')).json;
+  assert.deepStrictEqual(reglages.epargneAReconstituer, { montant: 117, mois });
+  assert.strictEqual(reglages.proposition.total, 283);
+  assert.strictEqual(Object.values(reglages.proposition.budgets).reduce((s, v) => s + v, 0), 283);
+
+  const accueil = (await appel('GET', '/api/accueil')).json;
+  assert.strictEqual(accueil.resteMois.aRemettre, 117);
+  assert.strictEqual(accueil.resteMois.disponible, reglages.budgetMensuel - 117);
+  assert.deepStrictEqual([accueil.resteMois.epargne.objectif, accueil.resteMois.epargne.atteint], [117, false]);
+  const tableau = (await appel('GET', `/api/tableau?mois=${mois}`)).json;
+  assert.strictEqual(tableau.reste.disponible, accueil.resteMois.disponible);
+  assert.ok(!('evolution' in tableau) && !('comparaison' in tableau) && !('inhabituelles' in tableau)); // plus de vue multi-mois
+});
+
+test('widget : GET /api/widget/argent', async (t) => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { once } = require('events');
+  if (!process.env.DOSSIER_DONNEES) {
+    Object.assign(process.env, { DOSSIER_DONNEES: fs.mkdtempSync(path.join(os.tmpdir(), 'argenx-test-')), APP_PASSWORD: 'mdp-test' });
+  }
+  delete process.env.NOTION_TOKEN;
+  const serveur = require('./server').listen(0);
+  await once(serveur, 'listening');
+  t.after(() => {
+    delete process.env.WIDGET_TOKEN;
+    serveur.close();
+  });
+  const base = `http://127.0.0.1:${serveur.address().port}`;
+  const connexion = await fetch(base + '/api/connexion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motDePasse: process.env.APP_PASSWORD }) });
+  const Cookie = connexion.headers.get('set-cookie').split(';')[0];
+  const appli = async (methode, chemin, corps, type = 'application/json') => {
+    const r = await fetch(base + chemin, { method: methode, headers: { Cookie, 'Content-Type': type }, body: corps && (type === 'application/json' ? JSON.stringify(corps) : corps) });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+  const JETON = 'jeton-widget-long-et-aleatoire';
+  const widget = (entetes = {}) => fetch(base + '/api/widget/argent', { headers: entetes }); // sans cookie : seul le jeton compte
+  const lire = async () => (await widget({ Authorization: `Bearer ${JETON}` })).json();
+
+  // Désactivé sans jeton, ou avec un jeton trop court.
+  assert.strictEqual((await widget()).status, 404);
+  process.env.WIDGET_TOKEN = 'trop-court';
+  assert.strictEqual((await widget({ Authorization: 'Bearer trop-court' })).status, 404);
+  process.env.WIDGET_TOKEN = JETON;
+
+  // Jeton absent ou faux : 401 sans corps ; le cookie de l'appli n'ouvre pas le widget.
+  for (const entetes of [{}, { Authorization: 'Bearer faux' }, { Authorization: JETON }, { Cookie }]) {
+    const r = await widget(entetes);
+    assert.strictEqual(r.status, 401);
+    assert.strictEqual(await r.text(), '');
+  }
+
+  // Cache vide : aucune opération. Tout est à zéro, updatedAt est null.
+  await appli('POST', '/api/restaurer', JSON.stringify({ argenx: 1, date: '2026-11-04', operations: [], reglages: {} }), 'text/plain');
+  const vide = await widget({ Authorization: `Bearer ${JETON}` });
+  assert.strictEqual(vide.status, 200);
+  assert.strictEqual(vide.headers.get('cache-control'), 'no-store');
+  const v = await vide.json();
+  assert.strictEqual(v.updatedAt, null);
+  assert.deepStrictEqual([v.envelope, v.toRestore, v.restored, v.available, v.spentMonth, v.remainingMonth, v.spentWeek, v.status], [400, 0, 0, 400, 0, 400, 0, 'ok']);
+
+  // Réponse complète, avec 91,45 € dépensés ce mois-ci (courses, resto, autres) et 117 € d'épargne à remettre.
+  const jour = new Date().toLocaleDateString('sv-SE');
+  const [annee, mois, jj] = jour.split('-').map(Number);
+  const nbJours = new Date(Date.UTC(annee, mois, 0)).getUTCDate();
+  await appli('PUT', '/api/epargne', { montant: 117 });
+  for (const [montant, description, categorie] of [[57.6, 'Utile', 'Courses'], [23.85, 'KFC', 'Restos & fast-food'], [10, 'Divers', 'Autres']]) {
+    await appli('POST', '/api/operations', { montant, description, categorie });
+  }
+  // Un mois ancien, même énorme, ne change rien.
+  await appli('POST', '/api/operations', { montant: 5000, description: 'Août', categorie: 'Courses', date: '2020-08-15' });
+  const d = await lire();
+  assert.deepStrictEqual(Object.keys(d), ['updatedAt', 'month', 'envelope', 'toRestore', 'restored', 'available', 'spentMonth', 'remainingMonth',
+    'daysLeftMonth', 'perDay', 'weekAllowance', 'spentWeek', 'remainingWeek', 'daysLeftWeek', 'status']);
+  assert.match(d.updatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  assert.strictEqual(d.month, jour.slice(0, 7));
+  assert.deepStrictEqual([d.envelope, d.toRestore, d.restored, d.available], [400, 117, 0, 283]);
+  assert.deepStrictEqual([d.spentMonth, d.remainingMonth], [91.45, 191.55]);
+  assert.strictEqual(d.daysLeftMonth, nbJours - jj + 1); // aujourd'hui compris
+  assert.strictEqual(d.perDay, Math.round(19155 / d.daysLeftMonth) / 100);
+  assert.strictEqual(d.daysLeftWeek, 7 - ((new Date(jour + 'T12:00:00Z').getUTCDay() + 6) % 7));
+  assert.strictEqual(d.weekAllowance, Math.round((283 / nbJours) * 7));
+  assert.deepStrictEqual([d.spentWeek, d.remainingWeek], [91.45, Math.round((d.weekAllowance - 91.45) * 100) / 100]);
+  assert.strictEqual(d.status, d.remainingWeek > 0.35 * d.weekAllowance ? 'ok' : d.remainingWeek > 0 ? 'warn' : 'over');
+
+  // Un versement de 30 € vers l'épargne : restored = 30, available = 400 − (117 − 30) = 313, les dépenses ne bougent pas.
+  await appli('POST', '/api/operations', { montant: 30, description: 'To EUR Savings', categorie: 'Épargne' });
+  const e = await lire();
+  assert.deepStrictEqual([e.restored, e.toRestore, e.available, e.spentMonth, e.remainingMonth], [30, 117, 313, 91.45, 221.55]);
+  assert.strictEqual(e.weekAllowance, Math.round((313 / nbJours) * 7));
+  // L'accueil affiche exactement les mêmes chiffres (disponible, reste, jours restants, par jour).
+  const carte = (await appli('GET', '/api/accueil')).json.resteMois;
+  assert.deepStrictEqual([carte.disponible, carte.reste, carte.joursRestants, carte.parJour, carte.epargne.remis, carte.epargne.restant],
+    [e.available, e.remainingMonth, e.daysLeftMonth, e.perDay, 30, 87]);
+
+  // Objectif atteint : plus rien à remettre, available = enveloppe, restored plafonné.
+  await appli('POST', '/api/operations', { montant: 100, description: 'To EUR Savings', categorie: 'Épargne' });
+  const atteint = await lire();
+  assert.deepStrictEqual([atteint.restored, atteint.available, atteint.remainingMonth], [117, 400, 308.55]);
+  assert.strictEqual((await appli('GET', '/api/accueil')).json.resteMois.epargne.atteint, true);
+
+  // Semaine dépassée : « over ».
+  await appli('POST', '/api/operations', { montant: 300, description: 'Gros achat', categorie: 'Shopping' });
+  const trop = await lire();
+  assert.strictEqual(trop.status, 'over');
+  assert.ok(trop.remainingWeek <= 0);
+  assert.strictEqual(trop.perDay, trop.remainingMonth > 0 ? trop.perDay : 0);
+
+  // Pas d'enveloppe réglée : 409.
+  await appli('PUT', '/api/budgets', { budgets: {}, mensuel: null });
+  assert.strictEqual((await widget({ Authorization: `Bearer ${JETON}` })).status, 409);
+  await appli('PUT', '/api/budgets', { budgets: {}, mensuel: 400 });
+
+  // Débit limité à 60 requêtes par heure et par jeton.
+  let statut = 200;
+  for (let i = 0; i < 70 && statut === 200; i++) statut = (await widget({ Authorization: `Bearer ${JETON}` })).status;
+  assert.strictEqual(statut, 429);
 });

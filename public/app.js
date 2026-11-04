@@ -2,6 +2,7 @@
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const euros = (n) => (n ?? 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+const euros0 = (n) => (n ?? 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); // vues d'ensemble : à l'euro près
 const nomMois = (m, mois = 'long') => new Date(m + '-15T12:00:00').toLocaleDateString('fr-FR', { month: mois, year: 'numeric' });
 const jourCourt = (iso) => new Date(iso.slice(0, 10) + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
 
@@ -81,6 +82,32 @@ $('#form-connexion').addEventListener('submit', async (e) => {
   }
 });
 
+// --- Reste à dépenser (mois en cours seulement) ---------------------------------
+// Enveloppe du mois − épargne à remettre − dépenses du mois. Affiché sur l'accueil et dans Insights.
+function htmlReste(r) {
+  if (r.disponible == null) return '<p class="vide">Fixe l’enveloppe du mois dans ⚙️ Réglages pour savoir combien il te reste.</p>';
+  const l = [`<div class="resume">
+      <small>Reste à dépenser · ${nomMois(r.mois)}</small>
+      <strong class="enorme ${r.reste < 0 ? 'rouge' : ''}">${euros0(r.reste)}</strong>
+      <small>${euros0(r.depense)} dépensés sur ${euros0(r.disponible)} disponibles${r.aRemettre ? ` (${euros0(r.enveloppe)} − ${euros0(r.aRemettre)} d’épargne à remettre)` : ''}</small>
+    </div>${barre(r.depense, r.disponible)}`];
+  if (r.courant && r.reste < 0) {
+    l.push(`<p class="rouge">Dépassé de ${euros0(-r.reste)}, et il reste ${r.joursRestants} jour${r.joursRestants > 1 ? 's' : ''}.</p>`);
+  } else if (r.courant && r.parJour != null) {
+    l.push(`<p>${r.joursRestants} jour${r.joursRestants > 1 ? 's' : ''} restant${r.joursRestants > 1 ? 's' : ''} : environ <strong>${euros0(r.parJour)} par jour</strong>.</p>`);
+  }
+  if (r.enCours && r.projection != null) {
+    const ecart = Math.round(r.disponible - r.projection);
+    l.push(`<p>À ce rythme, environ <strong>${euros0(r.projection)}</strong> en fin de mois : ${ecart >= 0 ? `<span class="vert">${euros0(ecart)} sous le disponible ✔</span>` : `<span class="rouge">${euros0(-ecart)} au-dessus ⚠</span>`}.</p>`);
+  }
+  if (r.epargne && !r.epargne.atteint) {
+    l.push(`<div class="epargne"><div class="ligne-budget"><span>Épargne à reconstituer</span><strong>${euros0(r.epargne.remis)} / ${euros0(r.epargne.objectif)}</strong></div>${barre(r.epargne.remis, r.epargne.objectif)}</div>`);
+  }
+  if (r.budgets.depasse) l.push(`<p class="rouge">Tes budgets par catégorie (${euros0(r.budgets.total)}) dépassent les ${euros0(r.disponible)} disponibles : ajuste-les dans ⚙️ Réglages.</p>`);
+  if (r.phrases.length) l.push(`<ul class="alertes">${r.phrases.map((x) => `<li class="${x.etat}">${ETAT_ICONE[x.etat]} ${esc(x.texte)}</li>`).join('')}</ul>`);
+  return l.join('');
+}
+
 // --- Accueil : enveloppes ------------------------------------------------------
 const memoire = {
   lire: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -106,6 +133,7 @@ const barreReste = (reste, budget, fine) =>
   `<div class="barre ${fine ? 'fine' : ''}"><div style="width:${budget > 0 ? Math.max(0, Math.min(100, (reste / budget) * 100)) : 0}%"></div></div>`;
 
 function afficherAccueil(a) {
+  $('#reste-mois').innerHTML = htmlReste(a.resteMois);
   const periode = a.vue === 'mois' ? 'ce mois-ci' : 'cette semaine';
   $('#resume-accueil').innerHTML = `
     <small>Il te reste ${periode}</small>
@@ -191,6 +219,7 @@ function dessiner() {
     $('#liste-categories').innerHTML = '<li class="vide">Graphiques indisponibles sans connexion Internet.</li>';
     return;
   }
+  Chart.defaults.animation = matchMedia('(prefers-reduced-motion: reduce)').matches ? false : { duration: 250 };
   Chart.defaults.color = css('--doux');
   Chart.defaults.borderColor = css('--grille');
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
@@ -211,7 +240,7 @@ function dessiner() {
   });
   // Le détail en liste (lisible sans les couleurs)
   $('#liste-categories').innerHTML = depenses.length
-    ? depenses.map((c) => `<li><span class="pastille" style="background:${couleur(c.categorie)}"></span><span class="nom">${esc(c.categorie)} <small>${c.nb} op.</small></span><span class="cout">${euros(c.montant)}</span></li>`).join('')
+    ? depenses.map((c) => `<li><span class="pastille" style="background:${couleur(c.categorie)}"></span><span class="nom">${esc(c.categorie)} <small>${c.nb} op.</small></span><span class="cout">${euros(c.montant)}${c.budget ? `<small> / ${euros0(c.budget)}${c.montant > c.budget ? ` · +${euros0(c.montant - c.budget)} au-dessus` : ''}</small>` : ''}</span>${c.budget ? barre(c.montant, c.budget) : ''}</li>`).join('')
     : '<li class="vide">Aucune dépense ce mois-ci.</li>';
 
   const barres = { borderRadius: 4, maxBarThickness: 28, borderSkipped: false };
@@ -225,57 +254,19 @@ function dessiner() {
     },
   });
 
-  graphe('g-evolution', {
-    type: 'bar',
-    data: {
-      labels: t.evolution.map((e) => new Date(e.mois + '-15T12:00:00').toLocaleDateString('fr-FR', { month: 'short' })),
-      datasets: [
-        { label: 'Entrées', data: t.evolution.map((e) => e.entrees), backgroundColor: css('--serie-1'), ...barres },
-        { label: 'Dépenses', data: t.evolution.map((e) => e.sorties), backgroundColor: css('--serie-2'), ...barres },
-      ],
-    },
-    options: {
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'top', align: 'start', labels: { boxWidth: 12, boxHeight: 12 } }, tooltip: infobulle },
-      scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 6 } }, y: { beginAtZero: true, ticks: { callback: (v) => euros(v).replace(',00', '') } } },
-    },
-  });
-
   $('#top').innerHTML = t.top.length
     ? t.top.map((c) => `<li><span class="nom">${esc(c.nom)} <small>${esc(c.categorie)} · ${c.nb} fois</small></span><span class="cout">${euros(c.montant)}</span></li>`).join('')
     : '<li class="vide">Rien ce mois-ci.</li>';
 }
-// Carte « Budget du mois » : ce qui reste, par jour, et où mène le rythme actuel.
+// Carte « Reste à dépenser » d'Insights : le même calcul que l'accueil, pour le mois choisi.
 function afficherBudget() {
-  const r = tableau.rythme;
-  const el = $('#budget-mois');
-  if (!r.budget) {
-    el.innerHTML = '<p class="vide">Fixe ton budget du mois dans ⚙️ Réglages pour savoir combien il te reste.</p>';
-    return;
-  }
-  const lignes = [`
-    <div class="ligne-budget">
-      <div><small>Reste à dépenser</small><strong class="gros ${r.reste < 0 ? 'rouge' : ''}">${euros(r.reste)}</strong></div>
-      <small>${euros(r.depense)} dépensés sur ${euros(r.budget)}</small>
-    </div>${barre(r.depense, r.budget)}`];
-  const aVenir = r.aVenir.map((a) => `${esc(a.nom)} ${euros(a.montant)} vers le ${Number(a.prochain.slice(8, 10))}`).join(', ');
-  if (r.enCours && r.reste < 0) {
-    lignes.push(`<p class="rouge">Budget dépassé de ${euros(-r.reste)}, et il reste ${r.joursRestants} jours.</p>`);
-  } else if (r.enCours) {
-    lignes.push(`<p>Il reste <strong>${r.joursRestants} jours</strong> : environ <strong>${euros(r.parJour)} par jour</strong>${r.totalAVenir ? `, une fois payés les abonnements à venir (${aVenir})` : ''}.</p>`);
-    const ecart = Math.round((r.budget - r.projection) * 100) / 100;
-    lignes.push(`<p>À ce rythme, environ <strong>${euros(r.projection)}</strong> dépensés à la fin du mois : ${ecart >= 0 ? `<span class="vert">${euros(ecart)} sous ton budget ✔</span>` : `<span class="rouge">${euros(-ecart)} au-dessus ⚠</span>`}.</p>`);
-  } else if (r.joursRestants === 0) {
-    lignes.push(r.reste >= 0
-      ? `<p class="vert">Mois terminé : ${euros(r.reste)} sous ton budget ✔</p>`
-      : `<p class="rouge">Mois terminé : ${euros(-r.reste)} au-dessus de ton budget ⚠</p>`);
-  }
+  const r = tableau.reste;
+  const lignes = [htmlReste(r)];
   if (r.enCours && (Date.now() - Date.parse(r.jusquau + 'T23:59:59')) / 864e5 > 3) {
     lignes.push(`<p class="aide">Opérations connues jusqu'au ${jourCourt(r.jusquau)} : importe un relevé récent pour être à jour.</p>`);
   }
   if (tableau.rembourses) lignes.push(`<p class="aide">↔ ${tableau.rembourses} achat(s) remboursé(s) ce mois-ci, retirés des totaux.</p>`);
-  el.innerHTML = lignes.join('');
+  $('#budget-mois').innerHTML = lignes.join('');
 }
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => tableau && dessiner());
@@ -300,18 +291,6 @@ function afficherAnalyses() {
           <span class="cout">${euros(a.montant)}<small>/mois · ${euros(a.coutAnnuel)}/an</small></span>
           <button class="petit secondaire" style="width:auto" data-pas-abonnement="${esc(a.cle)}" data-nom="${esc(a.nom)}">Pas un abonnement</button></li>`).join('')}</ul>`
     : '<p class="vide">Aucun abonnement repéré (il faut au moins 2 paiements à environ un mois d’écart).</p>';
-
-  $('#comparaison').innerHTML = t.comparaison.length
-    ? `<p class="aide">${nomMois(t.mois)} comparé au mois d’avant.</p><ul class="liste">${t.comparaison.map((c) => `
-        <li><span class="nom">${esc(c.categorie)} <small>${euros(c.avant)} → ${euros(c.ceMois)}</small></span>
-          <span class="cout ${c.ecart > 0 ? 'rouge' : c.ecart < 0 ? 'vert' : ''}">${c.ecart > 0 ? '▲ +' : c.ecart < 0 ? '▼ ' : ''}${euros(c.ecart)}</span></li>`).join('')}</ul>`
-    : '<p class="vide">Pas de dépenses sur ces deux mois.</p>';
-
-  $('#inhabituelles').innerHTML = t.inhabituelles.length
-    ? `<ul class="liste">${t.inhabituelles.map((o) => `
-        <li><span class="nom">${esc(o.description)} <small>${jourCourt(o.date)} · ${esc(o.categorie)}, d’habitude ${euros(o.mediane)}</small></span>
-          <span class="cout">${euros(o.montant)}</span></li>`).join('')}</ul>`
-    : '<p class="vide">Rien d’inhabituel ce mois-ci (plus de 3 fois la dépense habituelle de la catégorie).</p>';
 }
 
 $('#abonnements').addEventListener('click', async (e) => {
@@ -735,14 +714,56 @@ $('#form-enveloppes').addEventListener('submit', async (e) => {
   }
 });
 
+// Budgets par catégorie comparés à ce qui est disponible ce mois-ci (enveloppe − épargne à remettre).
+let reglagesChargees = null;
+function bilanBudgets() {
+  const r = reglagesChargees;
+  if (!r) return;
+  const total = [...document.querySelectorAll('#champs-budgets input')].reduce((s, i) => s + (Number(i.value) || 0), 0);
+  const enveloppe = $('#budget-mensuel').value === '' ? null : Number($('#budget-mensuel').value);
+  // Reste à remettre ce mois-ci = objectif − déjà mis de côté (jamais négatif).
+  const aRemettre = $('#epargne-mois').value === r.mois ? Math.max(0, (Number($('#epargne-montant').value) || 0) - (r.epargneMise || 0)) : 0;
+  if (enveloppe == null) { $('#bilan-budgets').textContent = `Total des budgets : ${euros0(total)}.`; return; }
+  const dispo = enveloppe - aRemettre;
+  const ecart = dispo - total;
+  $('#bilan-budgets').innerHTML = `Total des budgets : <strong>${euros0(total)}</strong> pour ${euros0(dispo)} disponibles ce mois-ci →
+    ${ecart >= 0 ? `<span class="vert">${euros0(ecart)} de marge</span>` : `<span class="rouge">${euros0(-ecart)} au-dessus du disponible ⚠</span>`}.`;
+}
+$('#form-budgets').addEventListener('input', bilanBudgets);
+$('#form-epargne').addEventListener('input', bilanBudgets);
+
+$('#proposer-budgets').addEventListener('click', () => {
+  const p = reglagesChargees?.proposition;
+  if (!p) return;
+  document.querySelectorAll('#champs-budgets input').forEach((i) => { i.value = p.budgets[i.name] ?? ''; });
+  bilanBudgets();
+  dire($('#form-budgets'), `Proposition remplie (${euros0(p.total)}) : modifie ce que tu veux, puis enregistre.`);
+});
+
+$('#form-epargne').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api('/api/epargne', { method: 'PUT', body: { montant: Number($('#epargne-montant').value) || 0, mois: $('#epargne-mois').value || undefined } });
+    dire(f, 'Enregistré ✔');
+    tableau = null;
+  } catch (err) {
+    dire(f, err.message);
+  }
+});
+
 async function chargerReglages() {
   const [r] = await Promise.all([api('/api/reglages'), chargerEtat()]);
+  reglagesChargees = r;
+  $('#epargne-montant').value = r.epargneAReconstituer?.montant ?? '';
+  $('#epargne-mois').value = r.epargneAReconstituer?.mois ?? r.mois;
   $('#budget-mensuel').value = r.budgetMensuel ?? '';
   $('#champs-budgets').innerHTML = etat.depenses.map((c) => `
     <label>${esc(c)}
       <input name="${esc(c)}" type="number" min="0" max="100000" step="1" inputmode="decimal" placeholder="—" value="${r.budgets[c] ?? ''}">
     </label>`).join('');
   afficherReglagesEnveloppes(r);
+  bilanBudgets();
   $('#liste-sources').innerHTML = r.sourcesRevenus.length
     ? r.sourcesRevenus.map((s) => `<li><span class="nom">★ « ${esc(s.motCle)} »</span>
         <button class="petit secondaire" style="width:auto" data-retirer-source="${esc(s.motCle)}">Retirer</button></li>`).join('')

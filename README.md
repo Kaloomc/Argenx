@@ -2,13 +2,14 @@
 
 Appli web pour téléphone (PWA installable) qui range tes dépenses à partir des **relevés CSV de Revolut** :
 
+1. **reste à dépenser du mois** (haut de l'accueil) : enveloppe du mois (400 €) − épargne à remettre (117 € en novembre 2026) − dépenses du mois, avec le montant par jour et le suivi « Épargne à reconstituer ». Calculé sur le mois en cours seulement, jamais sur les mois précédents ;
 1. **enveloppes de la semaine** (écran d'accueil) : il te reste combien cette semaine en courses, resto, achats libres, avec un plafond Uber Eats et les fixes du mois ;
 1. **budget du mois** (onglet Insights, 400 € par défaut) : ce qu'il reste, combien ça fait par jour, où tu finiras le mois à ce rythme, abonnements encore à payer ;
 2. **achats remboursés repérés tout seuls** (meuble remboursé par le magasin, billet remboursé par un proche) : ils ne comptent pas ;
 3. **import** du relevé (export en anglais ou en français), sans doublons même si les périodes se chevauchent ;
 4. **classement automatique** par règles (Courses, Transport, Abonnements…), que tu corriges en un geste ;
-5. **tableau de bord du mois** : dépenses par catégorie, entrées et dépenses, 12 derniers mois, top 10 des commerçants ;
-6. **analyses** : abonnements repérés et leur coût annuel, comparaison avec le mois précédent, dépenses inhabituelles, budget par catégorie ;
+5. **tableau de bord du mois** : dépenses par catégorie (avec le budget en repère), entrées et dépenses, top 10 des commerçants (Utile, Super U… regroupés) ;
+6. **analyses** : abonnements repérés et leur coût annuel, budget par catégorie ;
 7. **résumé mensuel dans Notion** (totaux par catégorie) et **courses payées** (détail de la seule catégorie Courses, pour Repax) ;
 8. **courses prévues par Repax**, lues dans la même page Notion.
 
@@ -123,16 +124,35 @@ Basic-Fit est remboursé par le virement « salle » : une règle le met en **Ne
 - **Revenus sûrs** : appuie sur un virement de tes parents → « ★ Revenu sûr (toujours) » (mot-clé = l'expéditeur). La liste se gère dans ⚙️ Réglages → Revenus sûrs. Tout autre argent reçu est une **entrée variable**, jamais comptée comme acquise : le budget repose sur les revenus sûrs réglés (460 €).
 - L'accueil montre, pour le mois : revenus sûrs reçus / attendus, entrées variables, et ce qu'il reste **à récupérer** sur tes avances.
 
-## Le budget du mois (onglet Insights)
+## Le reste à dépenser du mois (accueil et onglet Insights)
 
-Fixe dans ⚙️ Réglages ce que tu peux dépenser par mois (400 € par défaut). L'épargne ne compte pas comme une dépense.
-En haut de l'onglet 📊 Mois :
+Fixe dans ⚙️ Réglages l'**enveloppe du mois** (400 € par défaut) et, si besoin, l'**épargne à reconstituer** (montant et mois). Les revenus et l'épargne ne comptent jamais comme des dépenses.
 
-- **reste à dépenser** = budget − dépenses du mois ;
-- **par jour** = (reste − abonnements pas encore payés ce mois-ci) ÷ jours restants ;
-- **à ce rythme** = dépensé + dépenses courantes par jour × jours restants + abonnements à venir. En début de mois, quand il n'y a que quelques jours de données, le rythme est mélangé avec celui des 3 mois précédents.
+- **disponible** = enveloppe − ce qu'il reste à remettre en épargne ce mois-là, soit objectif − déjà mis de côté (400 − 117 = 283 € au départ ; après 30 € versés, 400 − 87 = 313 €) ;
+- **reste à dépenser** = disponible − dépenses du mois ;
+- **par jour** = reste ÷ jours restants, aujourd'hui compris (accueil et widget comptent pareil) ;
+- **à ce rythme** = dépensé + (dépensé ÷ jours écoulés) × jours restants, donné à partir du 7e jour du mois seulement. Aucun mois précédent n'entre dans ces chiffres.
+- **Épargne à reconstituer** : la barre avance avec tes virements vers un coffre Revolut ce mois-ci (catégorie Épargne, net des retraits depuis un coffre) et disparaît quand le montant est atteint. Chaque euro versé libère un euro de disponible (les dépenses ne comptent pas l'épargne) : après 30 € versés, le reste à dépenser monte de 30 €.
+- **Budgets par catégorie** (⚙️ Réglages) : un bouton propose 140 € Courses, 40 € Restos, 30 € Transport, 30 € Loisirs, 43 € Autres (283 € en tout). Rien n'est appliqué sans enregistrement ; l'appli avertit si la somme dépasse le disponible.
+- Jusqu'à 3 phrases « à surveiller » (budget d'une catégorie à 80 %, dépassé, ou consommé plus vite que le mois).
 
 Le « jour connu » est la date de ta dernière opération importée : importe un relevé récent pour que les calculs soient à jour.
+
+## Widget iPhone (facultatif)
+
+Un widget [Scriptable](https://scriptable.app) (appli gratuite) affiche ce qu'il reste cette semaine et ce mois-ci, et l'épargne à reconstituer. Il lit `GET /api/widget/argent` : lecture seule, calculé depuis les données de l'appli (jamais depuis Notion), sans libellés d'opérations ni noms de magasins, `Cache-Control: no-store`.
+
+1. **Jeton** : choisis un long jeton aléatoire (16 caractères au minimum), par exemple le résultat de `openssl rand -hex 24`, et mets-le dans `WIDGET_TOKEN` (YAML du NAS, puis redémarrage). Vide ou trop court = widget désactivé. Pour le révoquer, change-le.
+2. Dans **Scriptable**, crée un script, colle le contenu de [docs/widget-argent.js](docs/widget-argent.js) et renseigne `BASE_URL` (l'adresse HTTPS d'Argenx) et `TOKEN` en haut.
+3. Lance le script une fois dans Scriptable pour voir l'aperçu.
+4. Écran d'accueil : appui long → **+** → **Scriptable** → choisis le script. Petite, moyenne ou grande taille ; accessoires de l'écran verrouillé (cercle, rectangle, ligne). Un appui sur le widget ouvre Argenx.
+
+La réponse (dates `AAAA-MM-JJ`, fuseau de Paris, `updatedAt` en ISO 8601 ; `null` tant qu'il n'y a aucune opération) :
+`updatedAt, month, envelope, toRestore, restored, available, spentMonth, remainingMonth, daysLeftMonth, perDay, weekAllowance, spentWeek, remainingWeek, daysLeftWeek, status`.
+- `available` = `envelope` − max(0, `toRestore` − `restored`) ; `restored` = ce qui a été mis de côté ce mois-ci (virements vers un coffre, net des retraits depuis un coffre), plafonné à `toRestore`. Même calcul que la carte « Reste à dépenser » de l'accueil.
+- `daysLeftMonth` et `daysLeftWeek` comptent aujourd'hui. `weekAllowance` = `available` ÷ jours du mois × 7, à l'euro près ; la semaine va du lundi au dimanche.
+- `status` : `ok` s'il reste plus de 35 % de l'allocation de la semaine, `warn` entre 0 et 35 %, `over` si elle est dépassée.
+- Réponses : `401` sans jeton ou avec un mauvais jeton (sans corps), `404` si le widget est désactivé, `409` si l'enveloppe du mois n'est pas réglée, `429` au-delà de 60 requêtes par heure.
 
 ## Corriger à la main
 
@@ -148,12 +168,11 @@ Remboursé **en partie** (par exemple un ami qui te rend sa moitié) : mets la s
 ## Les analyses
 
 - **Abonnements** : même commerçant, montant à ±10 %, tous les 25 à 35 jours, au moins 2 fois. Coût annuel = dernier montant × 12. Un supermarché où tu vas souvent n'est pas compté.
-- **Dépenses inhabituelles** : plus de 3 fois la dépense habituelle (médiane) de la catégorie, dès qu'elle compte au moins 5 dépenses.
 - **Budgets** : à fixer par catégorie dans ⚙️ Réglages ; la barre passe au rouge en cas de dépassement.
 
 ## Limites connues
 
 - Seulement les opérations en **euros** ; un relevé par compte Revolut en euros.
 - Les mots-clés couvrent les commerçants courants en France ; les autres tombent dans « Autres » jusqu'à ce que tu crées une règle.
-- Pas encore de connexion automatique à la banque : l'import se fait à la main (la connexion via Open Banking, par exemple Enable Banking, est prévue plus tard).
+- La connexion automatique (Enable Banking) dure 180 jours au plus ; l'import CSV reste le secours.
 - Les graphiques viennent de cdnjs : sans Internet, les chiffres s'affichent mais pas les graphiques.

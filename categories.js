@@ -24,7 +24,7 @@ const MOTS_CLES = [
   ]],
   ['Courses', [
     'super u', 'hyper u', 'u express', 'marche u', 'systeme u', 'magasin u', 'lidl', 'carrefour', 'leclerc', 'e leclerc', 'auchan',
-    'intermarche', 'monoprix', 'franprix', 'casino', 'aldi', 'picard', 'biocoop', 'naturalia', 'netto', 'spar', 'cora',
+    'intermarche', 'utile', 'monoprix', 'franprix', 'casino', 'aldi', 'picard', 'biocoop', 'naturalia', 'netto', 'spar', 'cora',
     'grand frais', 'g20', 'leader price', 'match', 'colruyt',
   ]],
   ['Transport', [
@@ -76,4 +76,19 @@ function classer(op, regles = []) {
   return op.type === 'transfer' ? 'Proches' : 'Autres';
 }
 
-module.exports = { CATEGORIES, HORS_DEPENSES, classer, contient };
+// Enseignes écrites de plusieurs façons sur les relevés : regroupées sous un seul nom dans « Top commerçants »
+// et dans l'auto-complétion. Affichage seulement : le libellé de chaque opération n'est jamais modifié.
+const ENSEIGNES = [
+  ['Super U', ['super u', 'hyper u', 'u express', 'marche u', 'systeme u', 'magasin u', 'utile', 'u utile']],
+  ['Leclerc', ['e leclerc', 'leclerc']],
+  ['Carrefour', ['carrefour', 'carrefour city', 'carrefour market', 'carrefour express']],
+].map(([nom, mots]) => [nom, mots.map(normaliser)]);
+
+// { nom, cle } : nom affiché et clé de regroupement d'un libellé de relevé.
+function enseigne(description) {
+  const texte = normaliser(description);
+  const e = ENSEIGNES.find(([, mots]) => mots.some((m) => contient(texte, m)));
+  return e ? { nom: e[0], cle: normaliser(e[0]) } : { nom: description, cle: texte };
+}
+
+module.exports = { CATEGORIES, HORS_DEPENSES, classer, contient, enseigne };

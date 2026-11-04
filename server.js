@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { lireRevolut, fusionner, normaliser, arrondi } = require('./csv');
-const { CATEGORIES, HORS_DEPENSES, classer, contient } = require('./categories');
+const { CATEGORIES, HORS_DEPENSES, classer, contient, enseigne } = require('./categories');
 const analyses = require('./analyses');
 const notion = require('./notion');
 const operationsDemo = require('./demo');
@@ -39,6 +39,32 @@ app.post('/api/connexion', async (req, res) => {
 // Protégé par le « state » à usage unique créé au départ ; le code reçu ne sert qu'avec la clé secrète du serveur.
 app.get('/api/banque/retour', (req, res, next) => retourBanque(req, res).catch(next));
 
+// Widget iPhone (Scriptable, voir docs/widget-argent.js) : GET /api/widget/argent, lecture seule.
+// Jeton long et aléatoire dans WIDGET_TOKEN, passé en « Authorization: Bearer … » et comparé en temps constant.
+// Sans WIDGET_TOKEN (ou trop court : moins de 16 caractères), la route n'existe pas. Jamais de cookie, jamais Notion.
+// Débit limité à 60 requêtes par heure (par jeton ; par adresse pour les essais ratés).
+const appelsWidget = new Map();
+function dansLaLimite(cle) {
+  const maintenant = Date.now();
+  if (appelsWidget.size > 500) appelsWidget.clear();
+  const recents = (appelsWidget.get(cle) || []).filter((t) => maintenant - t < 3600e3);
+  const ok = recents.length < 60;
+  if (ok) recents.push(maintenant);
+  appelsWidget.set(cle, recents);
+  return ok;
+}
+app.get('/api/widget/argent', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const attendu = process.env.WIDGET_TOKEN;
+  if (!attendu || attendu.length < 16) return res.status(404).end();
+  const recu = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '')?.[1] ?? ''; // le préfixe « Bearer » est obligatoire
+  const valide = egal(signer(recu), signer(attendu));
+  if (!dansLaLimite(valide ? 'jeton' : `ip:${req.ip}`)) return res.status(429).set('Retry-After', '3600').end();
+  if (!valide) return res.status(401).end();
+  if (reglages.budgetMensuel == null) return res.status(409).json({ erreur: 'Enveloppe du mois non réglée' });
+  res.json(donneesWidget());
+});
+
 app.use('/api', (req, res, next) => {
   if (!MOT_DE_PASSE || req.path === '/etat') return next();
   const cookie = (req.headers.cookie || '').match(/(?:^|;\s*)argenx=([a-f0-9]+)/)?.[1] || '';
@@ -72,11 +98,15 @@ let operations = lire('operations.json');
 // Basic-Fit est remboursé par le virement « salle » : il ne compte dans aucune enveloppe (règle supprimable dans ⚙️ Réglages).
 const REGLE_SALLE = { motCle: 'Basic-Fit', categorie: 'Ne compte pas' };
 const REGLAGES_DEFAUT = () => ({
-  version: 2,
+  version: 3,
   regles: [{ ...REGLE_SALLE }], budgets: {}, budgetMensuel: 400, pasAbonnements: [], sourcesRevenus: [],
   enveloppes: structuredClone(enveloppes.ENVELOPPES_DEFAUT),
   revenusSurs: 460, // revenus fiables par mois (parents 400 €, mère 60 €) : la base du budget
+  // Épargne à remettre sur un mois précis ({ montant, mois: "2026-11" }) : retirée de ce qui reste à dépenser. null = rien à remettre.
+  epargneAReconstituer: null,
 });
+// Proposition de budgets par catégorie pour 283 € (400 € − 117 € d'épargne à remettre). Jamais appliquée sans que tu l'enregistres.
+const PROPOSITION_BUDGETS = { Courses: 140, 'Restos & fast-food': 40, Transport: 30, Loisirs: 30, Autres: 43 };
 const enregistres = lire('reglages.json');
 const reglages = { ...REGLAGES_DEFAUT(), ...enregistres };
 // Réglages enregistrés avant la version 2 : nouvelles valeurs par défaut, une seule fois, sans écraser ce que tu as changé.
@@ -85,6 +115,11 @@ if (enregistres && (enregistres.version ?? 1) < 2) {
   if (reglages.revenusSurs === 495) reglages.revenusSurs = 460;
   if (!reglages.regles.some((r) => normaliser(r.motCle) === normaliser(REGLE_SALLE.motCle))) reglages.regles.push({ ...REGLE_SALLE });
   reglages.version = 2;
+}
+// Version 3 : 117 € d'épargne d'octobre à remettre en novembre 2026 (une seule fois ; modifiable dans ⚙️ Réglages).
+if (enregistres && (enregistres.version ?? 1) < 3) {
+  if (enregistres.epargneAReconstituer === undefined) reglages.epargneAReconstituer = { montant: 117, mois: '2026-11' };
+  reglages.version = 3;
 }
 if (!operations) {
   // Premier lancement sans Notion : opérations d'exemple fictives pour voir les graphiques.
@@ -123,7 +158,11 @@ const affecte = (o) => arrondi((o.affectations || []).reduce((s, a) => s + a.mon
 const estRevenuSur = (o) => o.montant > 0 && reglages.sourcesRevenus.some((s) => contient(normaliser(o.description), normaliser(s.motCle)));
 const aujourdhui = () => new Date().toLocaleDateString('sv-SE'); // "2026-11-03", heure de Paris (TZ)
 
-const sauverOperations = () => ecrire('operations.json', operations);
+let misAJour = null; // dernière écriture des opérations (import, récupération Revolut, correction) : l'« updatedAt » du widget
+const sauverOperations = () => {
+  ecrire('operations.json', operations);
+  misAJour = new Date();
+};
 const sauverReglages = () => ecrire('reglages.json', reglages);
 reclasser();
 sauverOperations();
@@ -144,6 +183,73 @@ const lignesNotion = (mois) => analyses.resumeMois(reelles(), mois, reglages.bud
 const coursesNotion = (mois) => analyses.coursesDuMois(reelles(), mois);
 // Jusqu'où les opérations sont connues : date de la plus récente (les opérations sont triées, plus récente d'abord).
 const jusquau = () => [operations[0]?.date.slice(0, 10) || aujourdhui(), aujourdhui()].sort()[0];
+
+// Ce qui reste à dépenser dans un mois : disponible − dépenses du mois, avec
+// disponible = enveloppe − ce qu'il reste à remettre en épargne (objectif − déjà mis de côté ce mois-ci, jamais négatif).
+// Les dépenses n'incluent pas l'épargne : chaque euro viré vers un coffre libère donc un euro de disponible.
+// Calculé sur ce mois seulement : aucun mois précédent n'entre dans les chiffres.
+function resteDuMois(mois) {
+  const ops = comptees();
+  const epargne = analyses.epargneAReconstituer(ops, mois, reglages.epargneAReconstituer);
+  const aRemettre = epargne ? epargne.restant : 0;
+  const enveloppe = reglages.budgetMensuel ?? null;
+  const disponible = enveloppe == null ? null : arrondi(enveloppe - aRemettre);
+  const r = analyses.rythme(ops, mois, disponible, jusquau());
+  const categories = analyses.resumeMois(ops, mois, reglages.budgets).categories;
+  const totalBudgets = arrondi(Object.values(reglages.budgets).reduce((s, v) => s + v, 0));
+  // Jours restants : aujourd'hui compris, comme dans le widget (pour le mois en cours).
+  const jour = aujourdhui();
+  const courant = mois === jour.slice(0, 7);
+  const joursRestants = courant ? r.nbJours - Number(jour.slice(8, 10)) + 1 : r.joursRestants;
+  const parJour = disponible == null ? null : courant ? (r.reste > 0 ? arrondi(r.reste / joursRestants) : 0) : r.parJour;
+  return {
+    mois, enveloppe, aRemettre, disponible, ...r, courant, joursRestants, parJour,
+    epargne,
+    epargneMise: Math.max(0, analyses.resumeMois(ops, mois).epargne), // déjà mis de côté ce mois-ci (pour les Réglages)
+    budgets: { total: totalBudgets, depasse: disponible != null && totalBudgets > disponible + 0.005 },
+    phrases: analyses.phrases(categories, r),
+  };
+}
+
+// Date et heure avec le fuseau de Paris, en ISO 8601 : "2026-11-04T21:30:00+01:00".
+function isoParis(date) {
+  const f = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZoneName: 'longOffset' });
+  const p = Object.fromEntries(f.formatToParts(date).map((x) => [x.type, x.value]));
+  const decalage = (p.timeZoneName || '').replace('GMT', '') || '+00:00';
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}${decalage}`;
+}
+
+// Réponse du widget : le reste à dépenser du mois (même calcul que l'accueil) et l'allocation de la semaine en cours.
+// Mois : jours restants aujourd'hui compris. Semaine : du lundi au dimanche, allocation = disponible ÷ jours du mois × 7.
+function donneesWidget() {
+  const jour = aujourdhui();
+  const mois = jour.slice(0, 7);
+  const m = resteDuMois(mois);
+  const semaine = enveloppes.periode(jour, 'semaine');
+  const depensesSemaine = arrondi(comptees()
+    .filter((o) => !HORS_DEPENSES.includes(o.categorie) && o.date.slice(0, 10) >= semaine.debut && o.date.slice(0, 10) <= semaine.fin)
+    .reduce((somme, o) => somme - o.montant, 0));
+  const indiceJour = (new Date(jour + 'T12:00:00Z').getUTCDay() + 6) % 7; // lundi = 0
+  const alloue = Math.round((m.disponible / m.nbJours) * 7);
+  const resteSemaine = arrondi(alloue - depensesSemaine);
+  return {
+    updatedAt: operations.length && misAJour ? isoParis(misAJour) : null,
+    month: mois,
+    envelope: m.enveloppe,
+    toRestore: m.epargne?.objectif ?? 0,
+    restored: m.epargne?.remis ?? 0,
+    available: m.disponible,
+    spentMonth: m.depense,
+    remainingMonth: m.reste,
+    daysLeftMonth: m.joursRestants,
+    perDay: m.parJour ?? 0,
+    weekAllowance: alloue,
+    spentWeek: depensesSemaine,
+    remainingWeek: resteSemaine,
+    daysLeftWeek: 7 - indiceJour,
+    status: resteSemaine <= 0 ? (alloue > 0 || depensesSemaine > 0 ? 'over' : 'ok') : resteSemaine > 0.35 * alloue ? 'ok' : 'warn',
+  };
+}
 
 // --- État --------------------------------------------------------------------
 app.get('/api/etat', (req, res) => {
@@ -336,8 +442,8 @@ app.get('/api/commercants', (req, res) => {
   const vus = new Map();
   for (const o of operations) { // plus récente d'abord : on garde le libellé et la catégorie les plus récents
     if (o.montant >= 0) continue;
-    const k = normaliser(o.description);
-    const c = vus.get(k) || { nom: o.description, categorie: o.categorie, fois: 0 };
+    const { nom, cle: k } = enseigne(o.description); // « Utile », « Super U »… regroupés sous un seul nom
+    const c = vus.get(k) || { nom, categorie: o.categorie, fois: 0 };
     c.fois++;
     vus.set(k, c);
   }
@@ -380,7 +486,19 @@ app.patch('/api/operations/:id', (req, res) => {
 });
 
 app.get('/api/reglages', (req, res) => {
-  res.json(reglages);
+  const mois = aujourdhui().slice(0, 7);
+  res.json({ ...reglages, mois, epargneMise: resteDuMois(mois).epargneMise, proposition: { budgets: PROPOSITION_BUDGETS, total: arrondi(Object.values(PROPOSITION_BUDGETS).reduce((s, v) => s + v, 0)) } });
+});
+
+// Épargne à remettre ce mois-ci (montant 0 = rien à remettre). Retirée de ce qui reste à dépenser.
+app.put('/api/epargne', (req, res) => {
+  const { montant } = req.body ?? {};
+  const mois = req.body?.mois ?? aujourdhui().slice(0, 7);
+  verifier(Number.isFinite(montant) && montant >= 0 && montant <= 100000, 'Montant invalide');
+  verifier(MOIS.test(mois), 'Mois invalide');
+  reglages.epargneAReconstituer = montant > 0 ? { montant: arrondi(montant), mois } : null;
+  sauverReglages();
+  res.json(reglages.epargneAReconstituer);
 });
 
 // Nouvelle règle : s'applique aux opérations passées (sauf celles corrigées à la main) et futures.
@@ -540,6 +658,7 @@ app.get('/api/accueil', (req, res) => {
   const avances = operations.filter((o) => o.montant < 0 && resteARecuperer(o) > 0);
   res.json({
     ...enveloppes.calculer(ops, reglages.enveloppes, aujourdhui(), vue),
+    resteMois: resteDuMois(aujourdhui().slice(0, 7)), // (reste = ce qui reste des enveloppes de la semaine)
     jusquau: jusquau(),
     revenus: {
       surs: somme(recus.filter(estRevenuSur)),
@@ -588,12 +707,9 @@ app.get('/api/tableau', (req, res) => {
     mois,
     moisDispo: derniersMois(),
     ...analyses.resumeMois(ops, mois, reglages.budgets),
-    rythme: analyses.rythme(ops, mois, reglages.budgetMensuel, jusquau(), abonnements),
+    reste: resteDuMois(mois),
     rembourses: operations.filter((o) => o.rembourse && o.montant < 0 && analyses.moisDe(o) === mois).length,
-    evolution: analyses.evolution(ops, mois),
     top: analyses.topCommercants(ops, mois),
-    comparaison: analyses.comparaison(ops, mois),
-    inhabituelles: analyses.inhabituelles(ops, mois),
     abonnements,
   });
 });
@@ -664,6 +780,7 @@ if (require.main === module) {
   const PORT = Number(process.env.PORT) || 3012;
   const pret = () => console.log(`Argenx sur http://localhost:${PORT} (Notion ${notion.actif ? 'activé' : 'non configuré : mode démo'})`);
   // Revolut : une récupération peu après le démarrage, puis toutes les 6 heures (4 par jour, la limite habituelle sans toi).
+  if (process.env.WIDGET_TOKEN && process.env.WIDGET_TOKEN.length < 16) console.warn('WIDGET_TOKEN trop court (16 caractères au minimum) : le widget est désactivé.');
   setTimeout(recupererBanque, 15e3);
   setInterval(recupererBanque, 6 * 3600e3);
   if (MOT_DE_PASSE) app.listen(PORT, pret);

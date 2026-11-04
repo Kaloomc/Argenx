@@ -37,6 +37,7 @@
 
     <section id="accueil">
       <p id="bandeau-exemple" class="carte bandeau" hidden>Ce sont des <strong>opérations d'exemple fictives</strong>. Elles disparaissent dès ton premier import (onglet Importer).</p>
+      <div id="reste-mois" class="carte reste"></div>
       <div class="bascule" role="group" aria-label="Période">
         <button type="button" data-vue="semaine">Semaine</button>
         <button type="button" data-vue="mois">Mois</button>
@@ -63,14 +64,10 @@
         <div class="graphe bas"><canvas id="g-entrees" role="img" aria-label="Entrées comparées aux sorties"></canvas></div>
       </div>
       <div class="carte">
-        <h3>Sur 12 mois</h3>
-        <div class="graphe"><canvas id="g-evolution" role="img" aria-label="Entrées et sorties des 12 derniers mois"></canvas></div>
-      </div>
-      <div class="carte">
         <h3>Top 10 des commerçants</h3>
         <ol id="top" class="liste"></ol>
       </div>
-      <a class="bouton secondaire-lien" href="#analyses">🔍 Analyses détaillées (abonnements, dépenses inhabituelles…)</a>
+      <a class="bouton secondaire-lien" href="#analyses">🔍 Analyses détaillées (budgets, abonnements)</a>
     </section>
 
     <section id="analyses">
@@ -79,10 +76,6 @@
       <div id="budgets" class="carte"></div>
       <h3>Abonnements repérés</h3>
       <div id="abonnements" class="carte"></div>
-      <h3>Par rapport au mois précédent</h3>
-      <div id="comparaison" class="carte"></div>
-      <h3>Dépenses inhabituelles</h3>
-      <div id="inhabituelles" class="carte"></div>
       <p class="aide">Ces chiffres décrivent tes dépenses ; ce ne sont pas des conseils financiers.</p>
     </section>
 
@@ -133,13 +126,29 @@
         <button type="submit">Enregistrer les enveloppes</button>
         <p class="message" role="status"></p>
       </form>
-      <h3>Budgets de l'onglet Insights</h3>
+      <h3>Épargne à reconstituer</h3>
+      <form id="form-epargne" class="carte">
+        <div class="deux">
+          <label>À remettre (€)
+            <input id="epargne-montant" type="number" min="0" max="100000" step="1" inputmode="decimal" placeholder="0">
+          </label>
+          <label>Pendant le mois de
+            <input id="epargne-mois" type="month">
+          </label>
+        </div>
+        <p class="aide">Cette somme est mise de côté sur le mois choisi : elle est retirée de ce qui reste à dépenser. L'appli suit les virements vers tes coffres Revolut (catégorie Épargne) jusqu'à atteindre le montant. 0 = rien à remettre.</p>
+        <button type="submit">Enregistrer</button>
+        <p class="message" role="status"></p>
+      </form>
+      <h3>Budget du mois et budgets par catégorie</h3>
       <form id="form-budgets" class="carte">
-        <label>Budget total du mois (€)
+        <label>Enveloppe du mois (€)
           <input id="budget-mensuel" type="number" min="0" max="100000" step="1" inputmode="decimal" placeholder="400">
         </label>
         <p class="aide">Tout ce que tu peux dépenser dans le mois (l'épargne ne compte pas). Par catégorie, si tu veux :</p>
         <div id="champs-budgets" class="deux"></div>
+        <p id="bilan-budgets"></p>
+        <button type="button" id="proposer-budgets" class="secondaire-neutre">Remplir avec la proposition</button>
         <button type="submit">Enregistrer les budgets</button>
         <p class="message" role="status"></p>
       </form>
