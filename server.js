@@ -636,6 +636,20 @@ app.post('/api/notion', (req, res) => {
   res.json(notion.etat);
 });
 
+// Bouton « Rafraîchir Notion » : relit les bases des autres applis (Repax, Agendix « Présence ») et renvoie
+// le mois en cours vers Notion. Le navigateur recharge ensuite l'affichage. Une erreur Notion répond 502 avec son message.
+app.post('/api/notion/rafraichir', async (req, res) => {
+  verifier(notion.actif, 'Notion n’est pas configuré (mode démo).');
+  try {
+    const lues = await notion.rafraichir();
+    notion.synchroniser([aujourdhui().slice(0, 7)], lignesNotion, coursesNotion);
+    res.json({ lues, notion: notion.etat });
+  } catch (err) {
+    console.error('Notion (rafraîchir) :', err.message);
+    res.status(502).json({ erreur: err.message });
+  }
+});
+
 // --- Erreurs -----------------------------------------------------------------
 app.use((err, req, res, next) => {
   const status = err.status || 500;

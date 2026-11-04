@@ -54,6 +54,12 @@ header {
 header h1 { margin: 0; font-size: 1.25rem; }
 header select { margin-left: auto; width: auto; min-height: 36px; padding: 4px 8px; background: rgba(255,255,255,.15); color: #fff; border-color: rgba(255,255,255,.35); text-transform: capitalize; }
 header select option { color: #000; }
+header button.icone { min-height: 36px; min-width: 36px; padding: 4px 8px; background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.35); }
+header select[hidden] ~ button.icone { margin-left: auto; }
+header button.icone.charge { animation: tourne 1s linear infinite; }
+@keyframes tourne { to { transform: rotate(360deg); } }
+.statut-notion { max-width: 640px; margin: 8px auto 0; padding: 8px 16px; font-size: .875rem; color: var(--vert); }
+.statut-notion.erreur { color: var(--rouge); }
 .badge { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: rgba(255,255,255,.2); white-space: nowrap; }
 
 main { max-width: 640px; margin: 0 auto; padding: 16px 16px calc(env(safe-area-inset-bottom) + 160px); } /* place pour la barre du bas et le bouton + */

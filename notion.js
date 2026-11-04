@@ -169,6 +169,19 @@ async function envoyerCourses(mois, lignes) {
   for (const ids of existantes.values()) for (const pid of ids) await api('PATCH', `/pages/${pid}`, { archived: true });
 }
 
+// Rafraîchissement à la demande : oublie les identifiants de bases gardés en mémoire (pour retrouver une base
+// recréée ou renommée) puis relit les bases des autres applis. Renvoie { titre: nombre de lignes, ou null si la base est absente }.
+// Rien n'est écrit dans Notion ici, et le cache se reconstitue tout seul pendant la lecture.
+const BASES_LUES = ['Liste de courses', 'Planning des repas', 'Présence']; // Repax, Repax, Agendix
+async function rafraichir() {
+  const lignes = {};
+  for (const titre of BASES_LUES) {
+    delete bases[titre];
+    lignes[titre] = (await lireBase(titre))?.length ?? null;
+  }
+  return lignes;
+}
+
 // Envoi en tâche de fond. lignesDe(mois) et coursesDe(mois) sont appelées au moment de l'envoi, avec les données à jour.
 const etat = { enCours: false, fait: 0, fin: null, erreur: null };
 const enAttente = new Set();
@@ -193,4 +206,4 @@ async function synchroniser(listeMois, lignesDe, coursesDe) {
   etat.enCours = false;
 }
 
-module.exports = { actif: !!token, etat, synchroniser, lireBase };
+module.exports = { actif: !!token, etat, synchroniser, lireBase, rafraichir };

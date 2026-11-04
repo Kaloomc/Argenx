@@ -65,6 +65,7 @@ $('#choix-mois').addEventListener('change', (e) => {
 async function chargerEtat() {
   etat = await api('/api/etat');
   $('#mode').hidden = etat.mode !== 'demo';
+  $('#rafraichir-notion').hidden = etat.mode !== 'notion';
   $('#bandeau-exemple').hidden = !etat.exemple;
   $('#effacer-exemple').hidden = !etat.exemple;
 }
@@ -811,6 +812,40 @@ $('#envoyer-notion').addEventListener('click', async () => {
   } catch (err) {
     $('#etat-notion').textContent = err.message;
   }
+});
+
+// --- Rafraîchir depuis Notion ----------------------------------------------------
+// Relit les bases des autres applis (Repax, Agendix « Présence »), renvoie le mois en cours, puis recharge l'onglet affiché.
+let rafraichissement = false;
+let effacerStatut;
+function statutNotion(texte, erreur = false) {
+  const el = $('#statut-notion');
+  clearTimeout(effacerStatut);
+  el.hidden = !texte;
+  el.textContent = texte;
+  el.classList.toggle('erreur', erreur);
+  if (texte && !erreur) effacerStatut = setTimeout(() => { el.hidden = true; }, 6000);
+}
+
+$('#rafraichir-notion').addEventListener('click', async () => {
+  if (rafraichissement) return;
+  rafraichissement = true;
+  const b = $('#rafraichir-notion');
+  b.disabled = true;
+  b.classList.add('charge');
+  statutNotion('Notion : mise à jour en cours…');
+  try {
+    const { lues } = await api('/api/notion/rafraichir', { method: 'POST' });
+    const n = (titre, mot) => (lues[titre] == null ? `${mot} : absent` : `${mot} : ${lues[titre]}`);
+    statutNotion(`✔ Notion à jour — ${n('Liste de courses', 'courses Repax')}, ${n('Planning des repas', 'repas')}, ${n('Présence', 'présence Agendix')}.`);
+    tableau = null; // les chiffres affichés viennent de Notion en partie : on les relit
+    afficherOnglet();
+  } catch (err) {
+    statutNotion(`Notion : ${err.message}`, true);
+  }
+  b.classList.remove('charge');
+  b.disabled = false;
+  rafraichissement = false;
 });
 
 // --- Démarrage ---------------------------------------------------------------

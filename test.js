@@ -540,3 +540,61 @@ test('Revolut par Enable Banking : connexion, retour, récupération sans doublo
   assert.deepStrictEqual([etat.connectee, etat.validJusqua, etat.solde, etat.erreur], [true, '2027-05-03T00:00:00Z', 455.9, null]);
   assert.ok(!appels.some((a) => a.includes('cpt-usd'))); // le compte en dollars n'est pas suivi
 });
+
+test('rafraîchir Notion : refusé en mode démo, et relit les bases (cache des identifiants renouvelé)', async (t) => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { once } = require('events');
+
+  // Mode démo : la route refuse proprement.
+  if (!process.env.DOSSIER_DONNEES) {
+    Object.assign(process.env, { DOSSIER_DONNEES: fs.mkdtempSync(path.join(os.tmpdir(), 'argenx-test-')), APP_PASSWORD: 'mdp-test' });
+  }
+  delete process.env.NOTION_TOKEN;
+  const serveur = require('./server').listen(0);
+  await once(serveur, 'listening');
+  t.after(() => serveur.close());
+  const base = `http://127.0.0.1:${serveur.address().port}`;
+  const connexion = await fetch(base + '/api/connexion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motDePasse: process.env.APP_PASSWORD }) });
+  const Cookie = connexion.headers.get('set-cookie').split(';')[0];
+  const r = await fetch(base + '/api/notion/rafraichir', { method: 'POST', headers: { Cookie } });
+  assert.strictEqual(r.status, 400);
+  assert.match((await r.json()).erreur, /Notion/);
+
+  // Avec Notion (faux serveur) : une copie neuve du module, pour qu'elle lise le jeton de l'environnement.
+  const chemin = require.resolve('./notion');
+  const vraiFetch = global.fetch;
+  const PAGE = 'a'.repeat(32);
+  let version = 1; // la 2e fois, les bases ont de nouveaux identifiants (base recréée)
+  const interrogees = [];
+  global.fetch = async (url, o = {}) => {
+    if (!String(url).startsWith('https://api.notion.com/v1')) return vraiFetch(url, o);
+    const c = String(url).slice('https://api.notion.com/v1'.length);
+    let rep = null;
+    if (c.startsWith(`/blocks/${PAGE}/children`)) {
+      const bases = [['Liste de courses', 2], ['Planning des repas', 3], ...(version === 1 ? [['Présence', 4]] : [])];
+      rep = { results: bases.map(([titre]) => ({ id: `${titre}-v${version}`, type: 'child_database', child_database: { title: titre } })), next_cursor: null };
+    } else if (c.endsWith('/query')) {
+      const id = c.split('/')[2];
+      interrogees.push(id);
+      const n = { 'Liste de courses': 2, 'Planning des repas': 3, 'Présence': 4 }[id.split('-v')[0]];
+      rep = { results: Array.from({ length: n }, () => ({ properties: {} })), next_cursor: null };
+    }
+    return { ok: !!rep, status: rep ? 200 : 404, headers: new Headers(), json: async () => rep || { message: 'inconnu' } };
+  };
+  Object.assign(process.env, { NOTION_TOKEN: 'secret-test', NOTION_PAGE_ID: PAGE });
+  delete require.cache[chemin];
+  const notion = require('./notion');
+  t.after(() => {
+    global.fetch = vraiFetch;
+    delete process.env.NOTION_TOKEN;
+    delete process.env.NOTION_PAGE_ID;
+    delete require.cache[chemin];
+  });
+
+  assert.deepStrictEqual(await notion.rafraichir(), { 'Liste de courses': 2, 'Planning des repas': 3, 'Présence': 4 });
+  version = 2;
+  assert.deepStrictEqual(await notion.rafraichir(), { 'Liste de courses': 2, 'Planning des repas': 3, 'Présence': null }); // Présence absente : null, pas d'erreur
+  assert.ok(interrogees.includes('Liste de courses-v2')); // l'ancien identifiant n'est plus utilisé
+});
