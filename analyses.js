@@ -141,7 +141,8 @@ function abonnements(ops) {
 // Renvoie une Map id → id de l'opération jumelle.
 function remboursements(ops) {
   const paires = new Map();
-  const libre = (o) => !paires.has(o.id) && !o.pasRembourse && !['Épargne', 'Ne compte pas'].includes(o.categorie);
+  // Un virement déjà rapproché à la main (affectations) n'est pas réutilisé ici.
+  const libre = (o) => !paires.has(o.id) && !o.pasRembourse && !o.affectations?.length && !['Épargne', 'Ne compte pas'].includes(o.categorie);
   const tri = [...ops].sort((a, b) => a.date.localeCompare(b.date));
   // ponytail: O(n²), suffisant pour quelques milliers d'opérations
   for (const r of tri) {
@@ -154,6 +155,20 @@ function remboursements(ops) {
     paires.set(a.id, r.id);
   }
   return paires;
+}
+
+// Dépense nette : une avance remboursée (en tout ou en partie) ne compte que pour ce qui reste à ta charge,
+// et le virement qui la rembourse ne compte pas comme une entrée. Les virements portent leurs rapprochements :
+// affectations = [{ id de la dépense, montant }]. Renvoie des copies, les opérations ne sont pas modifiées.
+function nettes(ops) {
+  const recu = new Map();
+  for (const o of ops) for (const a of o.affectations || []) recu.set(a.id, (recu.get(a.id) || 0) + a.montant);
+  return ops
+    .map((o) => {
+      const delta = (recu.get(o.id) || 0) - (o.affectations || []).reduce((s, a) => s + a.montant, 0);
+      return delta ? { ...o, montant: arrondi(o.montant + delta) } : o;
+    })
+    .filter((o) => o.montant !== 0);
 }
 
 // Où en est le budget total du mois. jusquau : date ("2026-11-15") jusqu'où les opérations sont connues.
@@ -216,5 +231,5 @@ function previsionRepax(courses, planning, jour) {
 
 module.exports = {
   moisDe, decaler, resumeMois, evolution, topCommercants, comparaison, inhabituelles, abonnements, remboursements, rythme,
-  coursesDuMois, previsionRepax,
+  coursesDuMois, previsionRepax, nettes,
 };

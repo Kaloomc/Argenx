@@ -124,6 +124,15 @@ function afficherAccueil(a) {
           <div class="bas"><span>${euros(e.plafond.depense)} sur ${euros(e.plafond.budget)}</span><span>${ETAT_TEXTE[e.plafond.etat]}</span></div>
         </div>` : ''}
     </div>`).join('');
+  const r = a.revenus;
+  $('#revenus-mois').innerHTML = `
+    <h3>Ce mois-ci</h3>
+    <div class="chiffres">
+      <div><small>Revenus sûrs reçus</small><strong>${euros(r.surs)}</strong><small>sur ${euros(r.attendus)} attendus</small></div>
+      <div><small>Entrées variables</small><strong>${euros(r.variables)}</strong><small>pas dans le budget</small></div>
+      <div><small>À récupérer</small><strong class="${r.aRecuperer ? 'orange' : ''}">${euros(r.aRecuperer)}</strong><small>${r.avances} avance${r.avances > 1 ? 's' : ''}</small></div>
+    </div>
+    ${r.sourcesConfigurees ? '' : '<p class="aide">Pour reconnaître tes revenus sûrs : dans 📋 Dépenses, appuie sur un virement de tes parents → « ★ Revenu sûr ».</p>'}`;
   const hier = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
   $('#fraicheur').textContent = a.jusquau < hier
     ? `Dépenses connues jusqu'au ${jourCourt(a.jusquau)}. Importe ton relevé Revolut (onglet ⬆️) pour être à jour.`
@@ -326,7 +335,12 @@ function ligneOperation(o) {
   const r = o.rembourse;
   const badges = [
     o.manuelle && '<span class="badge-op">ajoutée à la main</span>',
-    o.aRembourser && '<span class="badge-op orange">💸 à rembourser</span>',
+    o.aRembourser > 0 && (o.recu >= o.aRembourser
+      ? `<span class="badge-op vert">✓ remboursé ${euros(o.recu)}</span>`
+      : `<span class="badge-op orange">💸 à rembourser ${o.recu ? `${euros(o.recu)} / ` : ''}${euros(o.aRembourser)}</span>`),
+    o.revenuSur && '<span class="badge-op vert">★ revenu sûr</span>',
+    ...(o.affectations || []).map((a) => `<span class="badge-op">↔ rembourse « ${esc(a.description)} » ${euros(a.montant)}</span>`),
+    o.montant > 0 && o.categorie === 'Revenus' && !o.revenuSur && !o.affectations?.length && !o.rembourse && '<span class="badge-op">entrée variable</span>',
     o.manuel && !o.manuelle && '<span class="badge-op">corrigée</span>',
   ].filter(Boolean).join('');
   const lien = r
@@ -334,11 +348,11 @@ function ligneOperation(o) {
        <button class="petit secondaire" style="width:auto" data-pas-rembourse="${esc(o.id)}">Pas un remboursement</button></span>`
     : '';
   return `<li class="op ${r || o.categorie === 'Ne compte pas' ? 'annulee' : ''}" data-id="${esc(o.id)}">
-    <span class="fond fond-droite" aria-hidden="true">💸 À rembourser</span>
+    <span class="fond fond-droite" aria-hidden="true">${o.montant > 0 ? '↔ Remboursement' : '💸 À rembourser'}</span>
     <span class="fond fond-gauche" aria-hidden="true">Catégorie 🏷️</span>
     <div class="contenu">
       <span class="nom">${esc(o.description)}<small>${esc(o.categorie)}</small></span>
-      <span class="cout ${o.montant > 0 ? 'vert' : ''}">${o.montant > 0 ? '+' : ''}${euros(o.montant)}</span>
+      <span class="cout ${o.montant > 0 ? 'vert' : ''}">${o.montant > 0 ? '+' : ''}${euros(o.montant)}${o.recu ? `<small>net ${euros(o.montant + o.recu)}</small>` : ''}</span>
       ${badges ? `<span class="badges">${badges}</span>` : ''}${lien}
     </div></li>`;
 }
@@ -353,7 +367,9 @@ function afficherOperations() {
         const groupes = [...new Set(duJour.map((o) => o.enveloppe ?? 'Hors enveloppes'))];
         return `<li class="titre-jour">${jourCourt(j)}</li>` + groupes.map((g) => {
           const ops = duJour.filter((o) => (o.enveloppe ?? 'Hors enveloppes') === g);
-          const depense = -somme(ops.filter((o) => !o.rembourse && o.categorie !== 'Ne compte pas'));
+          // Dépense nette : une avance remboursée ne compte que pour ce qui reste à ta charge.
+          const depense = -ops.filter((o) => o.montant < 0 && !o.rembourse && o.categorie !== 'Ne compte pas')
+            .reduce((s, o) => s + o.montant + (o.recu || 0), 0);
           return `<li class="titre-enveloppe"><span>${esc(g)}</span>${g !== 'Hors enveloppes' && depense ? `<span>${euros(depense)}</span>` : ''}</li>` +
             ops.map(ligneOperation).join('');
         }).join('');
@@ -392,6 +408,31 @@ listeOps.addEventListener('touchend', () => {
   else if (dx >= 70) basculerARembourser(li.dataset.id);
 });
 
+// Glisser à droite une somme reçue = « c'est un remboursement » : choisir la dépense qu'elle rembourse.
+async function ouvrirRapprochement(id) {
+  opActive = operations.find((x) => x.id === id);
+  const ouvertes = await api('/api/a-rembourser').catch(() => []);
+  $('#titre-rapprocher').innerHTML = `${esc(opActive.description)} <span class="cout vert">+${euros(opActive.montant)}</span><small>rembourse quelle dépense ?</small>`;
+  $('#liste-a-rembourser').innerHTML = ouvertes.length
+    ? ouvertes.map((d) => `<button type="button" class="choix" data-depense="${esc(d.id)}">
+        <span>${esc(d.description)} <small>${jourCourt(d.date)}</small></span><strong>reste ${euros(d.reste)}</strong></button>`).join('')
+    : '<p class="vide">Aucune dépense « à rembourser ». Marque d’abord la dépense avancée (glisse-la vers la droite), puis reviens ici.</p>';
+  $('#feuille-rapprocher').showModal();
+}
+
+$('#liste-a-rembourser').addEventListener('click', async (e) => {
+  const depense = e.target.closest('[data-depense]')?.dataset.depense;
+  if (!depense) return;
+  $('#feuille-rapprocher').close();
+  try {
+    const r = await api(`/api/operations/${encodeURIComponent(opActive.id)}/rapprocher`, { method: 'POST', body: { depense } });
+    alert(`${euros(r.montant)} rapprochés.${r.reste > 0 ? ` Il reste ${euros(r.reste)} à récupérer sur cette dépense.` : ' Dépense entièrement remboursée ✔'}`);
+  } catch (err) {
+    alert(err.message);
+  }
+  chargerOperations();
+});
+
 listeOps.addEventListener('click', async (e) => {
   const pas = e.target.dataset.pasRembourse;
   if (pas) {
@@ -405,6 +446,7 @@ listeOps.addEventListener('click', async (e) => {
 async function basculerARembourser(id) {
   const o = operations.find((x) => x.id === id);
   if (!o) return;
+  if (o.montant > 0) return ouvrirRapprochement(id);
   await api(`/api/operations/${encodeURIComponent(id)}`, { method: 'PATCH', body: { aRembourser: !o.aRembourser } }).catch((err) => alert(err.message));
   chargerOperations();
 }
@@ -418,11 +460,47 @@ function ouvrirActions(id, categoriesSeules = false) {
   $('#titre-op').innerHTML = `${esc(o.description)} <span class="cout">${euros(o.montant)}</span><small>${jourCourt(o.date)}</small>`;
   $('#grille-categories').innerHTML = etat.categories.map((c) =>
     `<button type="button" class="choix ${c === o.categorie ? 'actif' : ''}" data-categorie="${esc(c)}">${esc(c)}</button>`).join('');
+  const depense = o.montant < 0;
   $('#actions-op').hidden = categoriesSeules;
+  $('#actions-depense').hidden = categoriesSeules || !depense;
+  $('#actions-entree').hidden = categoriesSeules || depense;
   $('#basculer-rembourser').textContent = o.aRembourser ? '✓ À rembourser (retirer)' : '💸 À rembourser';
+  $('#part-rembourser').hidden = !o.aRembourser;
+  $('#montant-rembourser').value = o.aRembourser ? String(o.aRembourser).replace('.', ',') : '';
+  $('#annuler-rapprochement').hidden = !o.affectations?.length;
+  $('#revenu-sur').hidden = !!o.revenuSur;
   $('#supprimer-op').hidden = !o.manuelle;
   $('#feuille-op').showModal();
 }
+
+// Part de la dépense que l'on doit te rendre (par défaut : tout).
+$('#part-rembourser').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const v = Number($('#montant-rembourser').value.replace(',', '.'));
+  $('#feuille-op').close();
+  await api(`/api/operations/${encodeURIComponent(opActive.id)}`, { method: 'PATCH', body: { aRembourser: v } }).catch((err) => alert(err.message));
+  chargerOperations();
+});
+
+$('#est-remboursement').addEventListener('click', () => {
+  $('#feuille-op').close();
+  ouvrirRapprochement(opActive.id);
+});
+
+$('#annuler-rapprochement').addEventListener('click', async () => {
+  $('#feuille-op').close();
+  await api(`/api/operations/${encodeURIComponent(opActive.id)}/rapprocher`, { method: 'DELETE' }).catch((err) => alert(err.message));
+  chargerOperations();
+});
+
+// Revenu sûr : tous les virements qui contiennent ce mot-clé (par exemple le nom de l'expéditeur).
+$('#revenu-sur').addEventListener('click', async () => {
+  $('#feuille-op').close();
+  const motCle = prompt('Tous les virements qui contiennent ce mot-clé seront des revenus sûrs (garde par exemple juste le nom de l’expéditeur) :', opActive.description.replace(/^(payment from|virement de|de)\s+/i, ''));
+  if (!motCle?.trim()) return;
+  await api('/api/sources-revenus', { method: 'POST', body: { motCle } }).catch((err) => alert(err.message));
+  chargerOperations();
+});
 
 $('#grille-categories').addEventListener('click', async (e) => {
   const categorie = e.target.dataset.categorie;
@@ -623,6 +701,10 @@ async function chargerReglages() {
       <input name="${esc(c)}" type="number" min="0" max="100000" step="1" inputmode="decimal" placeholder="—" value="${r.budgets[c] ?? ''}">
     </label>`).join('');
   afficherReglagesEnveloppes(r);
+  $('#liste-sources').innerHTML = r.sourcesRevenus.length
+    ? r.sourcesRevenus.map((s) => `<li><span class="nom">★ « ${esc(s.motCle)} »</span>
+        <button class="petit secondaire" style="width:auto" data-retirer-source="${esc(s.motCle)}">Retirer</button></li>`).join('')
+    : '<li class="vide">Aucun. Dans 📋 Dépenses, appuie sur un virement de tes parents → « ★ Revenu sûr ».</li>';
   $('#liste-regles').innerHTML = r.regles.length
     ? r.regles.map((g) => `<li><span class="nom">« ${esc(g.motCle)} » → ${esc(g.categorie)}</span>
         <button class="petit secondaire" style="width:auto" data-supprimer="${esc(g.motCle)}">Supprimer</button></li>`).join('')
@@ -645,6 +727,13 @@ $('#form-budgets').addEventListener('submit', async (e) => {
   } catch (err) {
     dire(f, err.message);
   }
+});
+
+$('#liste-sources').addEventListener('click', async (e) => {
+  const motCle = e.target.dataset.retirerSource;
+  if (!motCle) return;
+  await api(`/api/sources-revenus?motCle=${encodeURIComponent(motCle)}`, { method: 'DELETE' }).catch((err) => alert(err.message));
+  chargerReglages();
 });
 
 $('#liste-pas-abonnements').addEventListener('click', async (e) => {

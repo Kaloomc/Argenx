@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { lireRevolut, fusionner, normaliser, arrondi } = require('./csv');
-const { CATEGORIES, HORS_DEPENSES, classer } = require('./categories');
+const { CATEGORIES, HORS_DEPENSES, classer, contient } = require('./categories');
 const analyses = require('./analyses');
 const notion = require('./notion');
 const operationsDemo = require('./demo');
@@ -67,7 +67,7 @@ let operations = lire('operations.json');
 const REGLE_SALLE = { motCle: 'Basic-Fit', categorie: 'Ne compte pas' };
 const REGLAGES_DEFAUT = () => ({
   version: 2,
-  regles: [{ ...REGLE_SALLE }], budgets: {}, budgetMensuel: 400, pasAbonnements: [],
+  regles: [{ ...REGLE_SALLE }], budgets: {}, budgetMensuel: 400, pasAbonnements: [], sourcesRevenus: [],
   enveloppes: structuredClone(enveloppes.ENVELOPPES_DEFAUT),
   revenusSurs: 460, // revenus fiables par mois (parents 400 €, mère 60 €) : la base du budget
 });
@@ -104,8 +104,17 @@ function reclasser() {
   }
   return changees;
 }
-// Les opérations qui comptent dans les totaux : sans les achats remboursés ni « Ne compte pas ».
-const comptees = () => operations.filter((o) => !o.rembourse && o.categorie !== 'Ne compte pas');
+// Les opérations qui comptent dans les totaux : sans les achats remboursés ni « Ne compte pas »,
+// et en dépense nette (avances remboursées à la main déduites, sans compter le remboursement comme une entrée).
+const comptees = () => analyses.nettes(operations.filter((o) => !o.rembourse && o.categorie !== 'Ne compte pas'));
+
+// « À rembourser » : montant attendu (true des anciennes données = la dépense entière), et ce qui est déjà revenu.
+const attendu = (o) => (o.aRembourser === true ? -o.montant : Number(o.aRembourser) || 0);
+const recuPour = (id) => arrondi(operations.reduce((s, o) => s + (o.affectations || []).filter((a) => a.id === id).reduce((t, a) => t + a.montant, 0), 0));
+const resteARecuperer = (o) => (o.rembourse ? 0 : Math.max(0, arrondi(attendu(o) - recuPour(o.id))));
+const affecte = (o) => arrondi((o.affectations || []).reduce((s, a) => s + a.montant, 0));
+// Revenu sûr : la description contient un des mots-clés de ⚙️ Réglages → Revenus sûrs.
+const estRevenuSur = (o) => o.montant > 0 && reglages.sourcesRevenus.some((s) => contient(normaliser(o.description), normaliser(s.motCle)));
 const aujourdhui = () => new Date().toLocaleDateString('sv-SE'); // "2026-11-03", heure de Paris (TZ)
 
 const sauverOperations = () => ecrire('operations.json', operations);
@@ -167,7 +176,9 @@ function remplacerSaisies(nouvelles) {
       Math.abs(Date.parse(o.date.slice(0, 10)) - Date.parse(b.date.slice(0, 10))) <= 3 * 864e5);
     if (!m) continue;
     if (m.manuel) Object.assign(b, { categorie: m.categorie, manuel: true });
-    if (m.aRembourser) b.aRembourser = true;
+    if (m.aRembourser) b.aRembourser = m.aRembourser;
+    // Les remboursements déjà rapprochés de la saisie passent sur la vraie ligne.
+    for (const o of operations) for (const a of o.affectations || []) if (a.id === m.id) a.id = b.id;
     operations = operations.filter((o) => o !== m);
     retirees.push(m);
   }
@@ -213,14 +224,73 @@ app.get('/api/operations', (req, res) => {
   const parId = new Map(operations.map((o) => [o.id, o]));
   res.json(operations
     .filter((o) => analyses.moisDe(o) === mois)
-    .map(({ id, date, description, montant, categorie, manuel, manuelle, aRembourser, rembourse }) => {
+    .map((o) => {
+      const { id, date, description, montant, categorie, manuel, manuelle, rembourse } = o;
       const j = rembourse && parId.get(rembourse);
       return {
-        id, date, description, montant, categorie, manuel: !!manuel, manuelle: !!manuelle, aRembourser: !!aRembourser,
+        id, date, description, montant, categorie, manuel: !!manuel, manuelle: !!manuelle,
         enveloppe: reglages.enveloppes.find((e) => e.categories.includes(categorie))?.nom ?? null,
         rembourse: j ? { date: j.date, description: j.description, montant: j.montant } : null,
+        // Dépense avancée pour quelqu'un : montant attendu, déjà reçu.
+        ...(montant < 0 && { aRembourser: attendu(o), recu: recuPour(id) }),
+        // Somme reçue : revenu sûr, ou remboursement de quelles dépenses.
+        ...(montant > 0 && {
+          revenuSur: estRevenuSur(o),
+          affectations: (o.affectations || []).map((a) => ({ montant: a.montant, description: parId.get(a.id)?.description ?? '?' })),
+        }),
       };
     }));
+});
+
+// Dépenses « à rembourser » pas encore entièrement remboursées (toutes périodes), pour le rapprochement.
+app.get('/api/a-rembourser', (req, res) => {
+  res.json(operations
+    .filter((o) => o.montant < 0 && attendu(o) > 0 && resteARecuperer(o) > 0)
+    .map((o) => ({ id: o.id, date: o.date, description: o.description, montant: o.montant, attendu: attendu(o), reste: resteARecuperer(o) })));
+});
+
+// Rapprocher une somme reçue (:id) d'une dépense « à rembourser ». montant facultatif : par défaut, tout ce qui peut l'être.
+app.post('/api/operations/:id/rapprocher', (req, res) => {
+  const recu = operations.find((o) => o.id === req.params.id);
+  const dep = operations.find((o) => o.id === req.body?.depense);
+  verifier(recu?.montant > 0, 'Ce n’est pas une somme reçue');
+  verifier(dep?.montant < 0 && attendu(dep) > 0, 'Cette dépense n’est pas marquée « à rembourser »');
+  const max = Math.min(arrondi(recu.montant - affecte(recu)), resteARecuperer(dep));
+  const montant = req.body?.montant === undefined ? max : req.body.montant;
+  verifier(Number.isFinite(montant) && montant > 0 && montant <= max + 0.005, `Montant possible : jusqu'à ${max.toFixed(2).replace('.', ',')} €`);
+  recu.affectations = [...(recu.affectations || []), { id: dep.id, montant: arrondi(montant) }];
+  reclasser();
+  sauverOperations();
+  if (notion.actif) notion.synchroniser([...new Set([analyses.moisDe(recu), analyses.moisDe(dep)])], lignesNotion, coursesNotion);
+  res.json({ montant: arrondi(montant), reste: resteARecuperer(dep) });
+});
+
+// Annuler les rapprochements d'une somme reçue.
+app.delete('/api/operations/:id/rapprocher', (req, res) => {
+  const recu = operations.find((o) => o.id === req.params.id);
+  verifier(recu, 'Opération introuvable');
+  const mois = new Set([analyses.moisDe(recu), ...(recu.affectations || []).map((a) => operations.find((o) => o.id === a.id)).filter(Boolean).map(analyses.moisDe)]);
+  delete recu.affectations;
+  reclasser();
+  sauverOperations();
+  if (notion.actif) notion.synchroniser([...mois], lignesNotion, coursesNotion);
+  res.json({ ok: true });
+});
+
+// Revenus sûrs : mots-clés des virements qui arrivent à coup sûr (parents…). Le reste est « entrée variable ».
+app.post('/api/sources-revenus', (req, res) => {
+  const motCle = String(req.body?.motCle ?? '').trim().slice(0, 60);
+  verifier(normaliser(motCle).length >= 2, 'Mot-clé trop court');
+  reglages.sourcesRevenus = [...reglages.sourcesRevenus.filter((s) => normaliser(s.motCle) !== normaliser(motCle)), { motCle }];
+  sauverReglages();
+  res.json(reglages.sourcesRevenus);
+});
+
+app.delete('/api/sources-revenus', (req, res) => {
+  const motCle = normaliser(req.query.motCle);
+  reglages.sourcesRevenus = reglages.sourcesRevenus.filter((s) => normaliser(s.motCle) !== motCle);
+  sauverReglages();
+  res.json(reglages.sourcesRevenus);
 });
 
 // Ajout rapide d'une dépense (avant que le relevé ne l'apporte). montant en positif.
@@ -248,6 +318,7 @@ app.delete('/api/operations/:id', (req, res) => {
   const op = operations.find((o) => o.id === req.params.id);
   verifier(op?.manuelle, 'Seule une dépense ajoutée à la main peut être supprimée');
   operations = operations.filter((o) => o !== op);
+  for (const o of operations) if (o.affectations) o.affectations = o.affectations.filter((a) => a.id !== op.id);
   reclasser();
   sauverOperations();
   if (notion.actif) notion.synchroniser([analyses.moisDe(op)], lignesNotion, coursesNotion);
@@ -278,9 +349,14 @@ app.get('/api/suggestion', (req, res) => {
 app.patch('/api/operations/:id', (req, res) => {
   const op = operations.find((o) => o.id === req.params.id);
   verifier(op, 'Opération introuvable');
-  if (typeof req.body?.aRembourser === 'boolean') {
+  if (req.body?.aRembourser !== undefined) {
     // « À rembourser » : avance faite pour quelqu'un, à rapprocher plus tard du virement reçu.
-    op.aRembourser = req.body.aRembourser;
+    // true = la dépense entière, un nombre = la part attendue, false = plus rien à récupérer.
+    const v = req.body.aRembourser;
+    verifier(op.montant < 0, 'Seule une dépense peut être « à rembourser »');
+    verifier(typeof v === 'boolean' || (Number.isFinite(v) && v >= 0 && v <= -op.montant + 0.005), 'Montant à récupérer invalide');
+    if (v === false || v === 0) delete op.aRembourser;
+    else op.aRembourser = v === true ? arrondi(-op.montant) : arrondi(v);
   } else if (req.body?.pasRembourse) {
     // « Ce n'est pas un remboursement » : les deux opérations comptent de nouveau normalement.
     const jumelle = operations.find((o) => o.id === op.rembourse);
@@ -361,7 +437,24 @@ app.delete('/api/pas-abonnements', (req, res) => {
 // --- Accueil : enveloppes ----------------------------------------------------------
 app.get('/api/accueil', (req, res) => {
   const vue = req.query.vue === 'mois' ? 'mois' : 'semaine';
-  res.json({ ...enveloppes.calculer(comptees(), reglages.enveloppes, aujourdhui(), vue), jusquau: jusquau() });
+  const ops = comptees();
+  // Ce mois-ci : revenus sûrs reçus, entrées variables (jamais comptées comme acquises), avances à récupérer.
+  const m = enveloppes.periode(aujourdhui(), 'mois');
+  const recus = ops.filter((o) => o.categorie === 'Revenus' && o.montant > 0 && o.date.slice(0, 10) >= m.debut && o.date.slice(0, 10) <= m.fin);
+  const somme = (l) => arrondi(l.reduce((s, o) => s + o.montant, 0));
+  const avances = operations.filter((o) => o.montant < 0 && resteARecuperer(o) > 0);
+  res.json({
+    ...enveloppes.calculer(ops, reglages.enveloppes, aujourdhui(), vue),
+    jusquau: jusquau(),
+    revenus: {
+      surs: somme(recus.filter(estRevenuSur)),
+      attendus: reglages.revenusSurs,
+      variables: somme(recus.filter((o) => !estRevenuSur(o))),
+      aRecuperer: arrondi(avances.reduce((s, o) => s + resteARecuperer(o), 0)),
+      avances: avances.length,
+      sourcesConfigurees: reglages.sourcesRevenus.length > 0,
+    },
+  });
 });
 
 // Montants et catégories des enveloppes, plafond Uber Eats, revenus fiables.

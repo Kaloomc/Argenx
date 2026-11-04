@@ -42,6 +42,7 @@
       <div id="resume-accueil" class="resume"></div>
       <ul id="alertes" class="alertes"></ul>
       <div id="liste-enveloppes"></div>
+      <div id="revenus-mois" class="carte"></div>
       <p id="fraicheur" class="aide"></p>
     </section>
 
@@ -86,8 +87,7 @@
     <section id="operations">
       <h2>Dépenses</h2>
       <input id="recherche" type="search" placeholder="Chercher (Lidl, Uber…)" aria-label="Chercher une opération">
-      <p class="aide">Glisse une dépense vers la <strong>gauche</strong> pour changer sa catégorie (l'appli propose d'en faire une règle), vers la <strong>droite</strong> pour la marquer « à rembourser ». Un appui ouvre les mêmes actions.
-        <strong>Ne compte pas</strong> la retire de partout. Un achat remboursé du même montant s'annule tout seul. Le bouton <strong>+</strong> ajoute une dépense tout de suite ; la ligne du relevé la remplacera.</p>
+      <p class="aide">Glisse à <strong>gauche</strong> : catégorie. À <strong>droite</strong> : « à rembourser » (une dépense) ou « c'est un remboursement » (une somme reçue). Un appui : toutes les actions.</p>
       <ul id="liste-operations" class="liste"></ul>
     </section>
 
@@ -134,6 +134,9 @@
         <button type="submit">Enregistrer les budgets</button>
         <p class="message" role="status"></p>
       </form>
+      <h3>Revenus sûrs</h3>
+      <p class="aide">Les virements qui contiennent ces mots-clés sont des revenus sûrs. Tout le reste reçu est une « entrée variable », jamais comptée comme acquise.</p>
+      <ul id="liste-sources" class="liste"></ul>
       <h3>Mes règles de classement</h3>
       <ul id="liste-regles" class="liste"></ul>
       <h3>Pas des abonnements</h3>
@@ -179,10 +182,29 @@
   <dialog id="feuille-op" class="feuille">
     <h2 id="titre-op"></h2>
     <div id="grille-categories" class="grille-choix"></div>
-    <div id="actions-op" class="deux">
-      <button type="button" id="basculer-rembourser" class="secondaire-neutre">💸 À rembourser</button>
+    <div id="actions-op" class="actions">
+      <div id="actions-depense" class="actions">
+        <button type="button" id="basculer-rembourser" class="secondaire-neutre">💸 À rembourser</button>
+        <form id="part-rembourser" class="avec-bouton">
+          <label>On doit te rendre (€)
+            <input id="montant-rembourser" type="text" inputmode="decimal" pattern="[0-9]+([,.][0-9]{1,2})?" required>
+          </label>
+          <button type="submit">OK</button>
+        </form>
+      </div>
+      <div id="actions-entree" class="actions">
+        <button type="button" id="est-remboursement" class="secondaire-neutre">↔ C'est un remboursement</button>
+        <button type="button" id="revenu-sur" class="secondaire-neutre">★ Revenu sûr (toujours)</button>
+        <button type="button" id="annuler-rapprochement" class="secondaire-neutre">Annuler le rapprochement</button>
+      </div>
       <button type="button" id="supprimer-op" class="secondaire">Supprimer</button>
     </div>
+    <button type="button" class="secondaire-neutre" data-fermer>Fermer</button>
+  </dialog>
+
+  <dialog id="feuille-rapprocher" class="feuille">
+    <h2 id="titre-rapprocher"></h2>
+    <div id="liste-a-rembourser" class="actions"></div>
     <button type="button" class="secondaire-neutre" data-fermer>Fermer</button>
   </dialog>
 

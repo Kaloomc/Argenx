@@ -328,7 +328,7 @@ test('ajout rapide : saisie à la main, « à rembourser », remplacée par la l
   assert.strictEqual((await appel('PATCH', `/api/operations/${id}`, { aRembourser: true })).status, 200);
   let liste = (await appel('GET', '/api/operations?mois=2026-10')).json;
   let saisie = liste.find((o) => o.id === id);
-  assert.deepStrictEqual([saisie.montant, saisie.manuelle, saisie.aRembourser, saisie.enveloppe], [-18.5, true, true, 'Resto & fast-food']);
+  assert.deepStrictEqual([saisie.montant, saisie.manuelle, saisie.aRembourser, saisie.enveloppe], [-18.5, true, 18.5, 'Resto & fast-food']);
   assert.ok((await appel('GET', '/api/commercants')).json.some((c) => c.nom === 'Gur Kebab' && c.categorie === 'Restos & fast-food'));
   assert.strictEqual((await appel('GET', '/api/suggestion?description=gur%20kebab')).json.categorie, 'Restos & fast-food');
 
@@ -340,7 +340,7 @@ test('ajout rapide : saisie à la main, « à rembourser », remplacée par la l
   liste = (await appel('GET', '/api/operations?mois=2026-10')).json;
   assert.ok(!liste.some((o) => o.id === id));
   const ligne = liste.find((o) => o.description === 'GUR KEBAB LILLE');
-  assert.deepStrictEqual([ligne.manuelle, ligne.aRembourser, ligne.categorie, ligne.manuel], [false, true, 'Restos & fast-food', true]);
+  assert.deepStrictEqual([ligne.manuelle, ligne.aRembourser, ligne.categorie, ligne.manuel], [false, 18.5, 'Restos & fast-food', true]);
 
   // Seule une saisie à la main se supprime.
   assert.strictEqual((await appel('DELETE', `/api/operations/${ligne.id}`)).status, 400);
@@ -348,3 +348,88 @@ test('ajout rapide : saisie à la main, « à rembourser », remplacée par la l
   assert.strictEqual(autre.categorie, 'Restos & fast-food'); // pas choisie : classée par les règles (boulangerie)
   assert.strictEqual((await appel('DELETE', `/api/operations/${autre.id}`)).status, 200);
 });
+
+test('dépense nette : avance remboursée en partie, virement de remboursement pas compté comme entrée', () => {
+  const { nettes } = require('./analyses');
+  const ops = [
+    { id: 'd', date: '2026-11-03 20:00:00', description: 'Le Bistrot', montant: -40, categorie: 'Restos & fast-food' },
+    { id: 'r', date: '2026-11-04 10:00:00', description: 'Payment from Lea', montant: 25, categorie: 'Revenus', affectations: [{ id: 'd', montant: 20 }] },
+    { id: 'p', date: '2026-11-04 11:00:00', description: 'Payment from Paul', montant: 15, categorie: 'Revenus', affectations: [{ id: 'd', montant: 15 }] },
+  ];
+  const n = Object.fromEntries(nettes(ops).map((o) => [o.id, o.montant]));
+  assert.deepStrictEqual(n, { d: -5, r: 5 }); // Paul a tout remboursé : son virement disparaît
+  assert.strictEqual(ops[0].montant, -40); // les opérations d'origine ne bougent pas
+});
+
+test('rapprochement : à rembourser, virement reçu, revenus sûrs et entrées variables', async (t) => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { once } = require('events');
+  if (!process.env.DOSSIER_DONNEES) {
+    Object.assign(process.env, { DOSSIER_DONNEES: fs.mkdtempSync(path.join(os.tmpdir(), 'argenx-test-')), APP_PASSWORD: 'mdp-test' });
+    delete process.env.NOTION_TOKEN;
+  }
+  const serveur = require('./server').listen(0);
+  await once(serveur, 'listening');
+  t.after(() => {
+    serveur.close();
+    fs.rmSync(process.env.DOSSIER_DONNEES, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${serveur.address().port}`;
+  const connexion = await fetch(base + '/api/connexion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motDePasse: process.env.APP_PASSWORD }) });
+  const Cookie = connexion.headers.get('set-cookie').split(';')[0];
+  const appel = async (methode, chemin, corps, type = 'application/json') => {
+    const r = await fetch(base + chemin, { method: methode, headers: { Cookie, 'Content-Type': type }, body: corps && (type === 'application/json' ? JSON.stringify(corps) : corps) });
+    return { status: r.status, json: await r.json() };
+  };
+
+  const auj = new Date().toLocaleDateString('sv-SE');
+  const csv = 'Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\n' +
+    `TRANSFER,Current,${auj} 08:00:00,${auj} 08:00:00,Payment from Papa Dupont,400.00,0.00,EUR,COMPLETED,900.00\n` +
+    `CARD_PAYMENT,Current,${auj} 12:00:00,${auj} 12:00:00,Le Bistrot,-40.00,0.00,EUR,COMPLETED,860.00\n` +
+    `TRANSFER,Current,${auj} 13:00:00,${auj} 13:00:00,Payment from Lea Martin,25.00,0.00,EUR,COMPLETED,885.00\n`;
+  assert.strictEqual((await appel('POST', '/api/import', csv, 'text/plain')).status, 200);
+  const ops = async () => (await appel('GET', `/api/operations?mois=${auj.slice(0, 7)}`)).json;
+  const trouve = async (d) => (await ops()).find((o) => o.description === d);
+  const bistrot = await trouve('Le Bistrot');
+  const lea = await trouve('Payment from Lea Martin');
+  await appel('PATCH', `/api/operations/${bistrot.id}`, { categorie: 'Restos & fast-food' });
+  const resto = async () => (await appel('GET', '/api/accueil?vue=mois')).json.enveloppes.find((e) => e.id === 'resto').depense;
+  const revenus = async () => (await appel('GET', '/api/accueil')).json.revenus;
+  const resto0 = await resto();
+  const avant = await revenus();
+
+  // J'avance 40 € ; on me doit 20 €.
+  assert.strictEqual((await appel('PATCH', `/api/operations/${bistrot.id}`, { aRembourser: 50 })).status, 400); // plus que la dépense
+  assert.strictEqual((await appel('PATCH', `/api/operations/${bistrot.id}`, { aRembourser: 20 })).status, 200);
+  assert.strictEqual((await appel('PATCH', `/api/operations/${lea.id}`, { aRembourser: true })).status, 400); // une entrée n'est pas une avance
+  const ouvertes = (await appel('GET', '/api/a-rembourser')).json;
+  assert.deepStrictEqual(ouvertes.find((o) => o.id === bistrot.id), { id: bistrot.id, date: bistrot.date, description: 'Le Bistrot', montant: -40, attendu: 20, reste: 20 });
+  assert.strictEqual((await revenus()).aRecuperer, arrondi2(avant.aRecuperer + 20));
+
+  // Léa m'envoie 25 € : 20 € remboursent le resto, 5 € restent une entrée variable.
+  const r = await appel('POST', `/api/operations/${lea.id}/rapprocher`, { depense: bistrot.id });
+  assert.deepStrictEqual(r.json, { montant: 20, reste: 0 });
+  assert.strictEqual((await appel('POST', `/api/operations/${lea.id}/rapprocher`, { depense: bistrot.id })).status, 400); // déjà tout reçu
+  assert.strictEqual(await resto(), arrondi2(resto0 - 20)); // dépense nette
+  const apres = await revenus();
+  assert.strictEqual(apres.aRecuperer, avant.aRecuperer);
+  assert.strictEqual(apres.variables, arrondi2(avant.variables - 20)); // le remboursement n'est pas une entrée
+  assert.deepStrictEqual((await trouve('Payment from Lea Martin')).affectations, [{ montant: 20, description: 'Le Bistrot' }]);
+  assert.strictEqual((await trouve('Le Bistrot')).recu, 20);
+
+  // Les parents : revenu sûr.
+  assert.strictEqual(apres.surs, 0);
+  await appel('POST', '/api/sources-revenus', { motCle: 'Papa Dupont' });
+  const surs = await revenus();
+  assert.deepStrictEqual([surs.surs, surs.variables, surs.sourcesConfigurees], [400, arrondi2(apres.variables - 400), true]);
+
+  // Annuler le rapprochement : tout revient comme avant.
+  await appel('DELETE', `/api/operations/${lea.id}/rapprocher`);
+  assert.strictEqual(await resto(), resto0);
+  await appel('DELETE', '/api/sources-revenus?motCle=papa%20dupont');
+  assert.strictEqual((await revenus()).surs, 0);
+});
+
+function arrondi2(x) { return Math.round(x * 100) / 100; }

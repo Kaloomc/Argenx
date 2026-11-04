@@ -109,7 +109,15 @@ Basic-Fit est remboursé par le virement « salle » : une règle le met en **Ne
   - glisser vers la **gauche** : changer de catégorie (l'appli propose d'en faire une règle) ;
   - glisser vers la **droite** : marquer « 💸 à rembourser » (ou l'enlever) ;
   - un **appui** : les mêmes actions, et « Supprimer » pour une dépense ajoutée à la main (les lignes du relevé ne se suppriment pas : elles reviendraient au prochain import).
-- « À rembourser » n'est pour l'instant qu'une marque : le rapprochement avec le virement reçu et la dépense nette arrivent à l'étape suivante.
+
+## Avances, remboursements et revenus sûrs
+
+- **Avance pour quelqu'un** : glisse la dépense à droite (« 💸 à rembourser », la dépense entière). Un appui permet de changer la part à récupérer (par exemple 20 € sur un resto à 40 €).
+- **Le virement arrive** : glisse-le à droite (« c'est un remboursement ») et choisis la dépense. Seul ce qui manque est rapproché ; le surplus reste une entrée variable. Plusieurs virements peuvent rembourser une même dépense.
+- Partout (enveloppes, Insights, Notion), on compte la **dépense nette** : 40 € avancés − 20 € rendus = 20 €. Le virement de remboursement ne compte **pas** comme une entrée.
+- Un remboursement exact (même montant, à moins de 30 jours) s'annule toujours tout seul, sans rien faire.
+- **Revenus sûrs** : appuie sur un virement de tes parents → « ★ Revenu sûr (toujours) » (mot-clé = l'expéditeur). La liste se gère dans ⚙️ Réglages → Revenus sûrs. Tout autre argent reçu est une **entrée variable**, jamais comptée comme acquise : le budget repose sur les revenus sûrs réglés (460 €).
+- L'accueil montre, pour le mois : revenus sûrs reçus / attendus, entrées variables, et ce qu'il reste **à récupérer** sur tes avances.
 
 ## Le budget du mois (onglet Insights)
 
