@@ -237,3 +237,58 @@ test('mots-clés : « Dr Martens » n’est pas une dépense de santé', () => {
   assert.notStrictEqual(classer({ description: 'Dr Martens', montant: -120, type: 'card' }), 'Santé');
   assert.strictEqual(classer({ description: 'Pharmacie du Centre', montant: -8, type: 'card' }), 'Santé');
 });
+
+test('enveloppes : reste de la semaine, plafond Uber Eats, états et alertes', () => {
+  const { ENVELOPPES_DEFAUT, periode, calculer, budgetMensuel } = require('./enveloppes');
+  assert.deepStrictEqual(periode('2026-11-04', 'semaine'), { debut: '2026-11-02', fin: '2026-11-08' }); // mercredi → lundi..dimanche
+  assert.deepStrictEqual(periode('2026-11-02', 'semaine'), { debut: '2026-11-02', fin: '2026-11-08' });
+  assert.deepStrictEqual(periode('2026-11-08', 'semaine'), { debut: '2026-11-02', fin: '2026-11-08' });
+  assert.deepStrictEqual(periode('2026-11-04', 'mois'), { debut: '2026-11-01', fin: '2026-11-30' });
+
+  const op = (date, description, montant, categorie) => ({ date: date + ' 12:00:00', description, montant, categorie });
+  const ops = [
+    op('2026-11-01', 'Uber Eats', -24, 'Restos & fast-food'), // dimanche : semaine d'avant, mais même mois
+    op('2026-11-02', 'Auchan', -20, 'Courses'),
+    op('2026-11-03', 'Auchan', -15, 'Courses'),
+    op('2026-11-03', 'KFC', -12, 'Restos & fast-food'),
+    op('2026-11-03', 'Remboursement Auchan', 5, 'Courses'), // vient en déduction
+    op('2026-11-04', 'Zara', -20, 'Shopping'),
+    op('2026-11-04', 'Free Mobile', -10, 'Abonnements'),
+    op('2026-11-04', 'Payment from Papa', 400, 'Revenus'), // jamais dans une enveloppe
+  ];
+  const s = calculer(ops, ENVELOPPES_DEFAUT, '2026-11-04', 'semaine');
+  const e = Object.fromEntries(s.enveloppes.map((x) => [x.id, x]));
+  assert.strictEqual(e.courses.depense, 30);
+  assert.strictEqual(e.courses.reste, 12);
+  assert.strictEqual(e.courses.etat, 'orange'); // 71 % utilisés après 3 jours sur 7 : trop vite
+  assert.strictEqual(e.resto.depense, 12); // l'Uber Eats de dimanche est sur la semaine d'avant
+  assert.strictEqual(e.resto.etat, 'vert');
+  assert.deepStrictEqual(e.resto.plafond, { nom: 'Uber Eats', budget: 26, depense: 24, reste: 2, etat: 'orange' }); // sur le mois
+  assert.strictEqual(e.libres.etat, 'rouge'); // 20 € pour 15 €
+  assert.strictEqual(e.fixes.mensuelle, true);
+  assert.strictEqual(e.fixes.depense, 10);
+  // Le chiffre principal ne compte que les enveloppes de la semaine.
+  assert.strictEqual(s.budget, 107);
+  assert.strictEqual(s.reste, 107 - 30 - 12 - 20);
+  assert.strictEqual(s.joursRestants, 5);
+  assert.strictEqual(s.alertes[0].etat, 'rouge');
+  assert.ok(s.alertes.some((a) => a.texte.startsWith('Uber Eats : 92 % utilisés')), JSON.stringify(s.alertes));
+
+  const m = calculer(ops, ENVELOPPES_DEFAUT, '2026-11-04', 'mois');
+  const em = Object.fromEntries(m.enveloppes.map((x) => [x.id, x]));
+  assert.strictEqual(em.courses.budget, 180); // 42 € × 30 jours / 7
+  assert.strictEqual(em.resto.depense, 36);
+  assert.strictEqual(m.budget, 608.58); // 180 + 214,29 + 64,29 + 150
+  assert.strictEqual(budgetMensuel(ENVELOPPES_DEFAUT), 613.67); // 182 + 216,67 + 65 + 150
+});
+
+test('enveloppes : plafond à 0 € sans dépense = pas d’alerte', () => {
+  const { ENVELOPPES_DEFAUT, calculer } = require('./enveloppes');
+  const config = structuredClone(ENVELOPPES_DEFAUT);
+  config[1].plafond.parMois = 0;
+  const s = calculer([], config, '2026-11-04', 'semaine');
+  assert.strictEqual(s.enveloppes[1].plafond.etat, 'vert');
+  assert.deepStrictEqual(s.alertes, []);
+  const u = calculer([{ date: '2026-11-03 20:00:00', description: 'Uber Eats', montant: -20, categorie: 'Restos & fast-food' }], config, '2026-11-04', 'semaine');
+  assert.strictEqual(u.enveloppes[1].plafond.etat, 'rouge');
+});

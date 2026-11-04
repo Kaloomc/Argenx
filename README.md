@@ -2,7 +2,8 @@
 
 Appli web pour téléphone (PWA installable) qui range tes dépenses à partir des **relevés CSV de Revolut** :
 
-1. **budget du mois** (400 € par défaut) : ce qu'il reste, combien ça fait par jour, où tu finiras le mois à ce rythme, abonnements encore à payer ;
+1. **enveloppes de la semaine** (écran d'accueil) : il te reste combien cette semaine en courses, resto, achats libres, avec un plafond Uber Eats et les fixes du mois ;
+1. **budget du mois** (onglet Insights, 400 € par défaut) : ce qu'il reste, combien ça fait par jour, où tu finiras le mois à ce rythme, abonnements encore à payer ;
 2. **achats remboursés repérés tout seuls** (meuble remboursé par le magasin, billet remboursé par un proche) : ils ne comptent pas ;
 3. **import** du relevé (export en anglais ou en français), sans doublons même si les périodes se chevauchent ;
 4. **classement automatique** par règles (Courses, Transport, Abonnements…), que tu corriges en un geste ;
@@ -64,7 +65,7 @@ Le dossier `data/` n'est jamais envoyé sur GitHub. Les jetons et mots de passe 
 
 - Colonnes reconnues en anglais (`Type, Product, Started Date, Completed Date, Description, Amount, Fee, Currency, State, Balance`) ou en français (`Type, Produit, Date de début, Date de fin, Description, Montant, Frais, Devise, État, Solde`), séparées par des virgules ou des points-virgules. Si elles ne sont pas reconnues, l'appli affiche celles qu'elle a trouvées.
 - Montant d'une opération = **Montant − Frais**.
-- Ignorées : les opérations **non terminées**, les **changes** de devise, les opérations dans une autre devise que l'euro, et les lignes du produit « Épargne / Savings » (le virement vers le coffre, côté compte courant, suffit).
+- Ignorées : les opérations **non terminées** (en attente, renvoyées), les lignes à 0 € (« Closing transaction »), les **changes** de devise, les opérations dans une autre devise que l'euro, et les lignes des produits « Épargne », « Dépôt » ou « Savings » (le virement vers le coffre, côté compte courant, suffit).
 - Doublon = même date et heure, même description, même montant, même solde.
 
 ## Comment les opérations sont classées
@@ -81,7 +82,23 @@ Dans l'ordre :
 Un remboursement garde la catégorie du commerçant et vient en déduction de ses dépenses.
 Quand tu changes la catégorie d'une opération (onglet 📋 Opérations), l'appli propose d'en faire une **règle** qui reclasse les opérations passées et futures (sauf celles que tu as corrigées à la main).
 
-## Le budget du mois
+## Les enveloppes (écran d'accueil)
+
+L'accueil répond à « il me reste combien cette semaine ? ». Chaque enveloppe regroupe des catégories :
+
+| Enveloppe | Par défaut | Catégories |
+|---|---|---|
+| Courses | 42 €/semaine | Courses |
+| Resto & fast-food | 50 €/semaine, **dont Uber Eats 26 €/mois** (Uber Eats, Deliveroo, Just Eat) | Restos & fast-food |
+| Achats libres | 15 €/semaine | Shopping, Loisirs, Autres, Santé, Études, Retraits, Proches |
+| Fixes | 150 €/mois | Logement, Abonnements, Transport |
+
+- La semaine va du lundi au dimanche. La bascule **Semaine / Mois** montre les mêmes enveloppes sur le mois (42 €/semaine → 180 € en novembre).
+- Le grand chiffre = ce qui reste dans les enveloppes de la semaine (les fixes, au mois, n'y entrent pas).
+- Trois couleurs seulement : **vert** ça tient ; **orange** 80 % utilisés, ou nettement plus vite que le temps (par exemple 60 % dépensés alors que 30 % de la semaine est passée) ; **rouge** dépassé.
+- Tout se règle dans ⚙️ Réglages : montants, plafond Uber Eats, revenus sûrs (495 € par défaut) et quelle catégorie va dans quelle enveloppe. L'appli affiche si le budget prévu dépasse les revenus sûrs.
+
+## Le budget du mois (onglet Insights)
 
 Fixe dans ⚙️ Réglages ce que tu peux dépenser par mois (400 € par défaut). L'épargne ne compte pas comme une dépense.
 En haut de l'onglet 📊 Mois :

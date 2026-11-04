@@ -59,7 +59,7 @@ const TYPES = {
   card: ['card payment', 'paiement par carte', 'paiement carte'],
   exchange: ['exchange', 'change', 'echange', 'conversion'],
   atm: ['atm', 'retrait', 'retrait d especes', 'distributeur'],
-  topup: ['topup', 'top up', 'recharge', 'rechargement'],
+  topup: ['topup', 'top up', 'recharge', 'rechargement', 'ajout de fonds'],
   transfer: ['transfer', 'virement'],
   refund: ['refund', 'card refund', 'remboursement', 'remboursement carte'],
 };
@@ -68,8 +68,8 @@ const codeType = (t) => {
   return Object.keys(TYPES).find((k) => TYPES[k].includes(n)) || n;
 };
 
-// Mouvements internes des coffres : le virement côté compte courant suffit.
-const PRODUIT_EPARGNE = /savings|epargne|coffre|pocket/;
+// Mouvements internes des coffres (Pockets, produits « Épargne » et « Dépôt ») : le virement côté compte courant suffit.
+const PRODUIT_EPARGNE = /savings|epargne|coffre|pocket|depot|deposit/;
 
 // "1 234,56" / "-12.50" / "1,234.56" → nombre
 function nombre(s) {
@@ -125,10 +125,12 @@ function lireRevolut(texte) {
     const date = dateIso(v('debut') || v('fin'));
     const montant = nombre(v('montant'));
     if (!date || montant === null) { ignorees.illisibles++; continue; }
+    const net = arrondi(montant - (nombre(v('frais')) ?? 0));
+    if (net === 0) continue; // « Closing transaction » et autres lignes à 0 € : rien à compter
     const op = {
       date,
       description: v('description').slice(0, 200) || '(sans description)',
-      montant: arrondi(montant - (nombre(v('frais')) ?? 0)),
+      montant: net,
       solde: nombre(v('solde')),
       type,
     };

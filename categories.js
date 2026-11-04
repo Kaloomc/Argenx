@@ -23,12 +23,12 @@ const MOTS_CLES = [
     'chatgpt', 'openai', 'adobe', 'crunchyroll', 'audible', 'notion',
   ]],
   ['Courses', [
-    'super u', 'hyper u', 'u express', 'marche u', 'systeme u', 'lidl', 'carrefour', 'leclerc', 'e leclerc', 'auchan',
+    'super u', 'hyper u', 'u express', 'marche u', 'systeme u', 'magasin u', 'lidl', 'carrefour', 'leclerc', 'e leclerc', 'auchan',
     'intermarche', 'monoprix', 'franprix', 'casino', 'aldi', 'picard', 'biocoop', 'naturalia', 'netto', 'spar', 'cora',
     'grand frais', 'g20', 'leader price', 'match', 'colruyt',
   ]],
   ['Transport', [
-    'sncf', 'ouigo', 'tgv', 'ratp', 'navigo', 'uber', 'bolt', 'heetch', 'blablacar', 'flixbus', 'tcl', 'tisseo',
+    'sncf', 'ouigo', 'tgv', 'ratp', 'navigo', 'ilevia', 'uber', 'bolt', 'heetch', 'blablacar', 'flixbus', 'tcl', 'tisseo',
     'lime', 'dott', 'tier', 'total', 'totalenergies', 'esso', 'shell', 'bp', 'avia', 'vinci', 'sanef', 'aprr',
     'indigo', 'transavia', 'easyjet', 'ryanair', 'air france', 'parking',
   ]],

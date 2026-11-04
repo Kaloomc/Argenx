@@ -33,8 +33,20 @@
       </form>
     </section>
 
-    <section id="mois">
+    <section id="accueil">
       <p id="bandeau-exemple" class="carte bandeau" hidden>Ce sont des <strong>opérations d'exemple fictives</strong>. Elles disparaissent dès ton premier import (onglet Importer).</p>
+      <div class="bascule" role="group" aria-label="Période">
+        <button type="button" data-vue="semaine">Semaine</button>
+        <button type="button" data-vue="mois">Mois</button>
+      </div>
+      <div id="resume-accueil" class="resume"></div>
+      <ul id="alertes" class="alertes"></ul>
+      <div id="liste-enveloppes"></div>
+      <p id="fraicheur" class="aide"></p>
+    </section>
+
+    <section id="mois">
+      <h2>Insights</h2>
       <div id="budget-mois" class="carte"></div>
       <div id="courses-repax" class="carte" hidden></div>
       <div id="chiffres" class="carte chiffres"></div>
@@ -55,6 +67,7 @@
         <h3>Top 10 des commerçants</h3>
         <ol id="top" class="liste"></ol>
       </div>
+      <a class="bouton secondaire-lien" href="#analyses">🔍 Analyses détaillées (abonnements, dépenses inhabituelles…)</a>
     </section>
 
     <section id="analyses">
@@ -71,7 +84,7 @@
     </section>
 
     <section id="operations">
-      <h2>Opérations</h2>
+      <h2>Dépenses</h2>
       <input id="recherche" type="search" placeholder="Chercher (Lidl, Uber…)" aria-label="Chercher une opération">
       <p class="aide">Change la catégorie d'une opération si elle est mal classée : l'appli te proposera d'en faire une règle.
         Choisis <strong>Ne compte pas</strong> pour qu'une opération n'apparaisse nulle part (budget, graphiques, analyses).
@@ -97,7 +110,22 @@
 
     <section id="reglages">
       <h2>Réglages</h2>
-      <h3>Budgets</h3>
+      <h3>Enveloppes</h3>
+      <form id="form-enveloppes" class="carte">
+        <div id="champs-enveloppes" class="deux"></div>
+        <label>Revenus sûrs par mois (€)
+          <input id="revenus-surs" type="number" min="0" max="10000" step="1" inputmode="decimal">
+        </label>
+        <p class="aide">Seulement ce qui arrive à coup sûr (virement des parents, salle…). Les remboursements et le variable n'y vont pas.</p>
+        <p id="bilan-enveloppes"></p>
+        <details>
+          <summary>Quelle catégorie va dans quelle enveloppe</summary>
+          <div id="carte-categories" class="deux"></div>
+        </details>
+        <button type="submit">Enregistrer les enveloppes</button>
+        <p class="message" role="status"></p>
+      </form>
+      <h3>Budgets de l'onglet Insights</h3>
       <form id="form-budgets" class="carte">
         <label>Budget total du mois (€)
           <input id="budget-mensuel" type="number" min="0" max="100000" step="1" inputmode="decimal" placeholder="400">
@@ -126,9 +154,9 @@
   </main>
 
   <nav>
-    <a href="#mois">📊<span>Mois</span></a>
-    <a href="#analyses">🔍<span>Analyses</span></a>
-    <a href="#operations">📋<span>Opérations</span></a>
+    <a href="#accueil">🏠<span>Accueil</span></a>
+    <a href="#operations">📋<span>Dépenses</span></a>
+    <a href="#mois">📈<span>Insights</span></a>
     <a href="#importer">⬆️<span>Importer</span></a>
     <a href="#reglages">⚙️<span>Réglages</span></a>
   </nav>

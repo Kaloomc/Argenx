@@ -39,6 +39,7 @@ let mois = null; // "2026-10"
 let tableau = null;
 
 const CHARGER = {
+  accueil: () => chargerAccueil(),
   mois: () => chargerTableau(),
   analyses: () => chargerTableau(),
   operations: () => chargerOperations(),
@@ -47,7 +48,7 @@ const CHARGER = {
 };
 
 function afficherOnglet() {
-  const id = location.hash.slice(1) || 'mois';
+  const id = location.hash.slice(1) || 'accueil';
   document.querySelectorAll('main > section').forEach((s) => s.classList.toggle('active', s.id === id));
   document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('active', a.hash === '#' + id));
   $('#choix-mois').hidden = !['mois', 'analyses', 'operations'].includes(id) || !mois;
@@ -78,6 +79,56 @@ $('#form-connexion').addEventListener('submit', async (e) => {
   }
 });
 
+// --- Accueil : enveloppes ------------------------------------------------------
+const memoire = {
+  lire: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  ecrire: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+};
+let vue = memoire.lire('argenx-vue') === 'mois' ? 'mois' : 'semaine';
+const ETAT_TEXTE = { vert: 'ça tient', orange: 'attention', rouge: 'dépassé' };
+const ETAT_ICONE = { orange: '⚠️', rouge: '⛔' };
+
+document.querySelectorAll('.bascule button').forEach((b) => b.addEventListener('click', () => {
+  vue = b.dataset.vue;
+  memoire.ecrire('argenx-vue', vue);
+  chargerAccueil();
+}));
+
+async function chargerAccueil() {
+  document.querySelectorAll('.bascule button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vue === vue)));
+  afficherAccueil(await api(`/api/accueil?vue=${vue}`));
+}
+
+// La barre montre ce qui reste : pleine au début, vide quand l'enveloppe est épuisée.
+const barreReste = (reste, budget, fine) =>
+  `<div class="barre ${fine ? 'fine' : ''}"><div style="width:${budget > 0 ? Math.max(0, Math.min(100, (reste / budget) * 100)) : 0}%"></div></div>`;
+
+function afficherAccueil(a) {
+  const periode = a.vue === 'mois' ? 'ce mois-ci' : 'cette semaine';
+  $('#resume-accueil').innerHTML = `
+    <small>Il te reste ${periode}</small>
+    <strong class="enorme ${a.reste < 0 ? 'rouge' : ''}">${euros(a.reste)}</strong>
+    <small>${a.joursRestants} jour${a.joursRestants > 1 ? 's' : ''} restant${a.joursRestants > 1 ? 's' : ''} · environ ${euros(a.parJour)} par jour</small>`;
+  $('#alertes').innerHTML = a.alertes.slice(0, 3).map((x) => `<li class="${x.etat}">${ETAT_ICONE[x.etat]} ${esc(x.texte)}</li>`).join('');
+  $('#liste-enveloppes').innerHTML = a.enveloppes.map((e) => `
+    <div class="carte enveloppe etat-${e.etat}">
+      <div class="haut"><span class="nom">${esc(e.nom)}${e.mensuelle && a.vue === 'semaine' ? ' <small>ce mois-ci</small>' : ''}</span>
+        <strong class="reste">${euros(e.reste)}</strong></div>
+      ${barreReste(e.reste, e.budget)}
+      <div class="bas"><span>${euros(e.depense)} dépensés sur ${euros(e.budget)}</span><span>${ETAT_TEXTE[e.etat]}</span></div>
+      ${e.plafond ? `
+        <div class="plafond etat-${e.plafond.etat}">
+          <div class="haut"><span>dont ${esc(e.plafond.nom)} <small>ce mois-ci</small></span><strong class="reste">${euros(e.plafond.reste)}</strong></div>
+          ${barreReste(e.plafond.reste, e.plafond.budget, true)}
+          <div class="bas"><span>${euros(e.plafond.depense)} sur ${euros(e.plafond.budget)}</span><span>${ETAT_TEXTE[e.plafond.etat]}</span></div>
+        </div>` : ''}
+    </div>`).join('');
+  const hier = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
+  $('#fraicheur').textContent = a.jusquau < hier
+    ? `Dépenses connues jusqu'au ${jourCourt(a.jusquau)}. Importe ton relevé Revolut (onglet ⬆️) pour être à jour.`
+    : '';
+}
+
 // --- Tableau de bord ---------------------------------------------------------
 async function chargerTableau() {
   tableau = await api(`/api/tableau${mois ? `?mois=${mois}` : ''}`);
@@ -85,7 +136,7 @@ async function chargerTableau() {
   const choix = $('#choix-mois');
   const liste = tableau.moisDispo.includes(mois) ? tableau.moisDispo : [mois, ...tableau.moisDispo];
   choix.innerHTML = liste.map((m) => `<option value="${m}" ${m === mois ? 'selected' : ''}>${nomMois(m)}</option>`).join('');
-  choix.hidden = !['mois', 'analyses', 'operations'].includes(location.hash.slice(1) || 'mois');
+  choix.hidden = !['mois', 'analyses', 'operations'].includes(location.hash.slice(1) || 'accueil');
   dessiner();
   afficherAnalyses();
   afficherCoursesRepax(tableau.mois);
@@ -374,6 +425,63 @@ $('#effacer-exemple').addEventListener('click', async () => {
 });
 
 // --- Réglages ----------------------------------------------------------------
+// Réglages des enveloppes : montants, plafond, revenus sûrs, et quelle catégorie va où.
+let enveloppesReglees = [];
+function afficherReglagesEnveloppes(r) {
+  enveloppesReglees = r.enveloppes;
+  $('#champs-enveloppes').innerHTML = r.enveloppes.map((e) => {
+    const cle = e.parSemaine !== undefined ? 'parSemaine' : 'parMois';
+    return `<label>${esc(e.nom)} <small>€/${cle === 'parSemaine' ? 'semaine' : 'mois'}</small>
+        <input data-enveloppe="${esc(e.id)}" data-cle="${cle}" type="number" min="0" max="10000" step="1" inputmode="decimal" value="${e[cle]}" required>
+      </label>${e.plafond ? `<label>${esc(e.plafond.nom)} <small>€/mois, compté dans ${esc(e.nom)}</small>
+        <input data-plafond="${esc(e.id)}" type="number" min="0" max="10000" step="1" inputmode="decimal" value="${e.plafond.parMois}" required>
+      </label>` : ''}`;
+  }).join('');
+  $('#revenus-surs').value = r.revenusSurs;
+  $('#carte-categories').innerHTML = etat.depenses.filter((c) => c !== 'Ne compte pas').map((c) => `
+    <label>${esc(c)}
+      <select data-categorie="${esc(c)}">
+        ${r.enveloppes.map((e) => `<option value="${esc(e.id)}" ${e.categories.includes(c) ? 'selected' : ''}>${esc(e.nom)}</option>`).join('')}
+        <option value="" ${r.enveloppes.some((e) => e.categories.includes(c)) ? '' : 'selected'}>Aucune enveloppe</option>
+      </select>
+    </label>`).join('');
+  bilanEnveloppes();
+}
+
+// Budget prévu sur un mois moyen comparé aux revenus sûrs.
+function bilanEnveloppes() {
+  const total = [...document.querySelectorAll('#champs-enveloppes [data-enveloppe]')]
+    .reduce((s, i) => s + (Number(i.value) || 0) * (i.dataset.cle === 'parSemaine' ? 52 / 12 : 1), 0);
+  const revenus = Number($('#revenus-surs').value) || 0;
+  const ecart = revenus - total;
+  $('#bilan-enveloppes').innerHTML = `Budget prévu : <strong>${euros(total)}</strong> par mois pour ${euros(revenus)} de revenus sûrs →
+    ${ecart >= 0 ? `<span class="vert">${euros(ecart)} de marge</span>` : `<span class="rouge">il manque ${euros(-ecart)} par mois</span>`}.`;
+}
+$('#form-enveloppes').addEventListener('input', bilanEnveloppes);
+
+$('#form-enveloppes').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const choix = [...f.querySelectorAll('[data-categorie]')];
+  const enveloppes = enveloppesReglees.map((x) => {
+    const champ = f.querySelector(`[data-enveloppe="${x.id}"]`);
+    const plafond = f.querySelector(`[data-plafond="${x.id}"]`);
+    return {
+      id: x.id,
+      [champ.dataset.cle]: Number(champ.value),
+      categories: choix.filter((s) => s.value === x.id).map((s) => s.dataset.categorie),
+      ...(plafond && { plafond: { parMois: Number(plafond.value) } }),
+    };
+  });
+  try {
+    const r = await api('/api/enveloppes', { method: 'PUT', body: { enveloppes, revenusSurs: Number($('#revenus-surs').value) } });
+    enveloppesReglees = r.enveloppes;
+    dire(f, 'Enveloppes enregistrées ✔');
+  } catch (err) {
+    dire(f, err.message);
+  }
+});
+
 async function chargerReglages() {
   const [r] = await Promise.all([api('/api/reglages'), chargerEtat()]);
   $('#budget-mensuel').value = r.budgetMensuel ?? '';
@@ -381,6 +489,7 @@ async function chargerReglages() {
     <label>${esc(c)}
       <input name="${esc(c)}" type="number" min="0" max="100000" step="1" inputmode="decimal" placeholder="—" value="${r.budgets[c] ?? ''}">
     </label>`).join('');
+  afficherReglagesEnveloppes(r);
   $('#liste-regles').innerHTML = r.regles.length
     ? r.regles.map((g) => `<li><span class="nom">« ${esc(g.motCle)} » → ${esc(g.categorie)}</span>
         <button class="petit secondaire" style="width:auto" data-supprimer="${esc(g.motCle)}">Supprimer</button></li>`).join('')

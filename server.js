@@ -7,6 +7,7 @@ const { CATEGORIES, HORS_DEPENSES, classer } = require('./categories');
 const analyses = require('./analyses');
 const notion = require('./notion');
 const operationsDemo = require('./demo');
+const enveloppes = require('./enveloppes');
 
 const app = express();
 app.set('trust proxy', 1); // derrière le proxy inversé du NAS
@@ -62,7 +63,12 @@ function ecrire(nom, valeur) {
 const BUDGETS_DEMO = { Courses: 130, 'Restos & fast-food': 50, Transport: 35, Shopping: 50, Loisirs: 30 };
 
 let operations = lire('operations.json');
-const reglages = { regles: [], budgets: {}, budgetMensuel: 400, pasAbonnements: [], ...lire('reglages.json') };
+const REGLAGES_DEFAUT = () => ({
+  regles: [], budgets: {}, budgetMensuel: 400, pasAbonnements: [],
+  enveloppes: structuredClone(enveloppes.ENVELOPPES_DEFAUT),
+  revenusSurs: 495, // revenus fiables par mois : la base du budget
+});
+const reglages = { ...REGLAGES_DEFAUT(), ...lire('reglages.json') };
 if (!operations) {
   // Premier lancement sans Notion : opérations d'exemple fictives pour voir les graphiques.
   operations = notion.actif ? [] : operationsDemo().map((o) => ({ ...o, demo: true }));
@@ -166,7 +172,7 @@ app.post('/api/restaurer', express.text({ type: () => true, limit: '50mb' }), (r
   verifier(s.operations.every((o) => o && typeof o.id === 'string' && typeof o.date === 'string' && Number.isFinite(o.montant)), 'Sauvegarde abîmée : opération illisible.');
   operations = s.operations.sort((a, b) => b.date.localeCompare(a.date));
   for (const k of Object.keys(reglages)) delete reglages[k];
-  Object.assign(reglages, { regles: [], budgets: {}, budgetMensuel: 400, pasAbonnements: [] }, s.reglages);
+  Object.assign(reglages, REGLAGES_DEFAUT(), s.reglages);
   reclasser();
   sauverOperations();
   sauverReglages();
@@ -263,6 +269,39 @@ app.delete('/api/pas-abonnements', (req, res) => {
   reglages.pasAbonnements = reglages.pasAbonnements.filter((p) => p.cle !== cle);
   sauverReglages();
   res.json({ ok: true });
+});
+
+// --- Accueil : enveloppes ----------------------------------------------------------
+app.get('/api/accueil', (req, res) => {
+  const vue = req.query.vue === 'mois' ? 'mois' : 'semaine';
+  res.json({ ...enveloppes.calculer(comptees(), reglages.enveloppes, aujourdhui(), vue), jusquau: jusquau() });
+});
+
+// Montants et catégories des enveloppes, plafond Uber Eats, revenus fiables.
+app.put('/api/enveloppes', (req, res) => {
+  const recues = req.body?.enveloppes;
+  const revenusSurs = req.body?.revenusSurs;
+  const montant = (v) => Number.isFinite(v) && v >= 0 && v <= 10000;
+  verifier(Array.isArray(recues) && montant(revenusSurs), 'Réglages invalides');
+  const depenses = CATEGORIES.filter((c) => !HORS_DEPENSES.includes(c));
+  const vues = new Set();
+  const nouvelles = reglages.enveloppes.map((e) => {
+    const r = recues.find((x) => x?.id === e.id);
+    verifier(r, `Enveloppe manquante : ${e.nom}`);
+    const cle = e.parSemaine !== undefined ? 'parSemaine' : 'parMois';
+    verifier(montant(r[cle]), `Montant invalide pour ${e.nom}`);
+    verifier(Array.isArray(r.categories) && r.categories.every((c) => depenses.includes(c) && !vues.has(c) && vues.add(c)), `Catégories invalides pour ${e.nom}`);
+    const n = { ...e, [cle]: arrondi(r[cle]), categories: r.categories };
+    if (e.plafond) {
+      verifier(montant(r.plafond?.parMois), `Plafond invalide pour ${e.plafond.nom}`);
+      n.plafond = { ...e.plafond, parMois: arrondi(r.plafond.parMois) };
+    }
+    return n;
+  });
+  reglages.enveloppes = nouvelles;
+  reglages.revenusSurs = arrondi(revenusSurs);
+  sauverReglages();
+  res.json({ enveloppes: nouvelles, revenusSurs: reglages.revenusSurs, budgetMensuel: enveloppes.budgetMensuel(nouvelles) });
 });
 
 // --- Tableau de bord et analyses -----------------------------------------------
