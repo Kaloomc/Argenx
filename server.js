@@ -150,12 +150,29 @@ app.post('/api/import', express.text({ type: () => true, limit: '20mb' }), (req,
   if (exempleEfface) operations = operations.filter((o) => !o.demo);
   const r = fusionner(operations, lu.operations);
   operations = r.operations;
+  const remplacees = remplacerSaisies(r.ajout);
   reclasser();
   sauverOperations();
-  const mois = [...new Set(r.ajout.map(analyses.moisDe))].sort();
+  const mois = [...new Set([...r.ajout, ...remplacees].map(analyses.moisDe))].sort();
   if (notion.actif && mois.length) notion.synchroniser(mois, lignesNotion, coursesNotion);
-  res.json({ ajoutees: r.ajout.length, doublons: r.doublons, ignorees: lu.ignorees, exempleEfface, mois: mois.at(-1) || null });
+  res.json({ ajoutees: r.ajout.length, doublons: r.doublons, remplacees: remplacees.length, ignorees: lu.ignorees, exempleEfface, mois: mois.at(-1) || null });
 });
+
+// Une dépense saisie à la main est remplacée par la ligne du relevé : même montant, à 3 jours près.
+// La ligne du relevé garde la catégorie choisie et la marque « à rembourser ». Renvoie les saisies retirées.
+function remplacerSaisies(nouvelles) {
+  const retirees = [];
+  for (const b of nouvelles) {
+    const m = operations.find((o) => o.manuelle && Math.abs(o.montant - b.montant) < 0.005 &&
+      Math.abs(Date.parse(o.date.slice(0, 10)) - Date.parse(b.date.slice(0, 10))) <= 3 * 864e5);
+    if (!m) continue;
+    if (m.manuel) Object.assign(b, { categorie: m.categorie, manuel: true });
+    if (m.aRembourser) b.aRembourser = true;
+    operations = operations.filter((o) => o !== m);
+    retirees.push(m);
+  }
+  return retirees;
+}
 
 app.delete('/api/exemple', (req, res) => {
   operations = operations.filter((o) => !o.demo);
@@ -196,16 +213,75 @@ app.get('/api/operations', (req, res) => {
   const parId = new Map(operations.map((o) => [o.id, o]));
   res.json(operations
     .filter((o) => analyses.moisDe(o) === mois)
-    .map(({ id, date, description, montant, categorie, manuel, rembourse }) => {
+    .map(({ id, date, description, montant, categorie, manuel, manuelle, aRembourser, rembourse }) => {
       const j = rembourse && parId.get(rembourse);
-      return { id, date, description, montant, categorie, manuel: !!manuel, rembourse: j ? { date: j.date, description: j.description, montant: j.montant } : null };
+      return {
+        id, date, description, montant, categorie, manuel: !!manuel, manuelle: !!manuelle, aRembourser: !!aRembourser,
+        enveloppe: reglages.enveloppes.find((e) => e.categories.includes(categorie))?.nom ?? null,
+        rembourse: j ? { date: j.date, description: j.description, montant: j.montant } : null,
+      };
     }));
+});
+
+// Ajout rapide d'une dépense (avant que le relevé ne l'apporte). montant en positif.
+app.post('/api/operations', (req, res) => {
+  const { montant, categorie, date } = req.body ?? {};
+  const description = String(req.body?.description ?? '').trim().slice(0, 100);
+  verifier(Number.isFinite(montant) && montant > 0 && montant <= 10000, 'Montant invalide');
+  verifier(description, 'Indique le commerçant');
+  verifier(categorie === undefined || CATEGORIES.includes(categorie), 'Catégorie inconnue');
+  verifier(date === undefined || /^\d{4}-\d{2}-\d{2}$/.test(date), 'Date invalide');
+  const heure = new Date().toLocaleTimeString('fr-FR', { hour12: false });
+  const op = {
+    id: 'm-' + crypto.randomUUID(), date: `${date || aujourdhui()} ${heure}`, description, montant: -arrondi(montant),
+    solde: null, type: 'card', manuelle: true, ...(categorie && { categorie, manuel: true }),
+  };
+  operations = [op, ...operations].sort((a, b) => b.date.localeCompare(a.date));
+  reclasser();
+  sauverOperations();
+  if (notion.actif) notion.synchroniser([analyses.moisDe(op)], lignesNotion, coursesNotion);
+  res.json({ id: op.id, categorie: op.categorie });
+});
+
+// Seule une saisie à la main peut être supprimée (les lignes du relevé reviendraient au prochain import).
+app.delete('/api/operations/:id', (req, res) => {
+  const op = operations.find((o) => o.id === req.params.id);
+  verifier(op?.manuelle, 'Seule une dépense ajoutée à la main peut être supprimée');
+  operations = operations.filter((o) => o !== op);
+  reclasser();
+  sauverOperations();
+  if (notion.actif) notion.synchroniser([analyses.moisDe(op)], lignesNotion, coursesNotion);
+  res.json({ ok: true });
+});
+
+// Commerçants déjà vus (les plus fréquents d'abord), pour l'auto-complétion de l'ajout rapide.
+app.get('/api/commercants', (req, res) => {
+  const vus = new Map();
+  for (const o of operations) { // plus récente d'abord : on garde le libellé et la catégorie les plus récents
+    if (o.montant >= 0) continue;
+    const k = normaliser(o.description);
+    const c = vus.get(k) || { nom: o.description, categorie: o.categorie, fois: 0 };
+    c.fois++;
+    vus.set(k, c);
+  }
+  res.json([...vus.values()].sort((a, b) => b.fois - a.fois).slice(0, 300));
+});
+
+// Catégorie suggérée pour un commerçant : celle de sa dernière dépense, sinon les règles.
+app.get('/api/suggestion', (req, res) => {
+  const description = String(req.query.description ?? '').slice(0, 100);
+  const k = normaliser(description);
+  const deja = k && operations.find((o) => o.montant < 0 && normaliser(o.description) === k);
+  res.json({ categorie: deja?.categorie ?? classer({ description, montant: -1, type: 'card' }, reglages.regles) });
 });
 
 app.patch('/api/operations/:id', (req, res) => {
   const op = operations.find((o) => o.id === req.params.id);
   verifier(op, 'Opération introuvable');
-  if (req.body?.pasRembourse) {
+  if (typeof req.body?.aRembourser === 'boolean') {
+    // « À rembourser » : avance faite pour quelqu'un, à rapprocher plus tard du virement reçu.
+    op.aRembourser = req.body.aRembourser;
+  } else if (req.body?.pasRembourse) {
     // « Ce n'est pas un remboursement » : les deux opérations comptent de nouveau normalement.
     const jumelle = operations.find((o) => o.id === op.rembourse);
     for (const o of [op, jumelle]) if (o) o.pasRembourse = true;

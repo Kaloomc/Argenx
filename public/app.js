@@ -52,6 +52,7 @@ function afficherOnglet() {
   document.querySelectorAll('main > section').forEach((s) => s.classList.toggle('active', s.id === id));
   document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('active', a.hash === '#' + id));
   $('#choix-mois').hidden = !['mois', 'analyses', 'operations'].includes(id) || !mois;
+  $('#ajouter').hidden = !['accueil', 'operations'].includes(id);
   CHARGER[id]?.().catch((err) => console.error(err));
 }
 addEventListener('hashchange', afficherOnglet);
@@ -310,7 +311,7 @@ $('#abonnements').addEventListener('click', async (e) => {
   chargerTableau();
 });
 
-// --- Opérations ----------------------------------------------------------------
+// --- Dépenses : par jour, puis par enveloppe ------------------------------------
 let operations = [];
 
 async function chargerOperations() {
@@ -319,55 +320,187 @@ async function chargerOperations() {
   afficherOperations();
 }
 
+const somme = (liste) => liste.reduce((s, o) => s + o.montant, 0);
+
+function ligneOperation(o) {
+  const r = o.rembourse;
+  const badges = [
+    o.manuelle && '<span class="badge-op">ajoutée à la main</span>',
+    o.aRembourser && '<span class="badge-op orange">💸 à rembourser</span>',
+    o.manuel && !o.manuelle && '<span class="badge-op">corrigée</span>',
+  ].filter(Boolean).join('');
+  const lien = r
+    ? `<span class="rembourse"><span>↔ ${o.montant < 0 ? 'remboursé par' : 'rembourse'} « ${esc(r.description)} » le ${jourCourt(r.date)} : ne compte pas</span>
+       <button class="petit secondaire" style="width:auto" data-pas-rembourse="${esc(o.id)}">Pas un remboursement</button></span>`
+    : '';
+  return `<li class="op ${r || o.categorie === 'Ne compte pas' ? 'annulee' : ''}" data-id="${esc(o.id)}">
+    <span class="fond fond-droite" aria-hidden="true">💸 À rembourser</span>
+    <span class="fond fond-gauche" aria-hidden="true">Catégorie 🏷️</span>
+    <div class="contenu">
+      <span class="nom">${esc(o.description)}<small>${esc(o.categorie)}</small></span>
+      <span class="cout ${o.montant > 0 ? 'vert' : ''}">${o.montant > 0 ? '+' : ''}${euros(o.montant)}</span>
+      ${badges ? `<span class="badges">${badges}</span>` : ''}${lien}
+    </div></li>`;
+}
+
 function afficherOperations() {
   const q = $('#recherche').value.trim().toLowerCase();
   const liste = operations.filter((o) => !q || o.description.toLowerCase().includes(q));
-  let jour = '';
-  $('#liste-operations').innerHTML = liste.length
-    ? liste.map((o) => {
-        const titre = o.date.slice(0, 10) !== jour ? `<li class="titre-jour">${jourCourt((jour = o.date.slice(0, 10)))}</li>` : '';
-        const r = o.rembourse;
-        const lien = r
-          ? `<span class="rembourse"><span>↔ ${o.montant < 0 ? 'remboursé par' : 'rembourse'} « ${esc(r.description)} » le ${jourCourt(r.date)} : ne compte pas</span>
-             <button class="petit secondaire" style="width:auto" data-pas-rembourse="${esc(o.id)}">Pas un remboursement</button></span>`
-          : '';
-        return `${titre}<li class="op ${r || o.categorie === 'Ne compte pas' ? 'annulee' : ''}">
-          <span class="nom">${esc(o.description)}</span>
-          <span class="cout ${o.montant > 0 ? 'vert' : ''}">${o.montant > 0 ? '+' : ''}${euros(o.montant)}</span>
-          <select data-id="${esc(o.id)}" data-description="${esc(o.description)}" aria-label="Catégorie">
-            ${etat.categories.map((c) => `<option ${c === o.categorie ? 'selected' : ''}>${esc(c)}</option>`).join('')}
-          </select>
-          ${o.manuel ? '<small>corrigée</small>' : ''}${lien}</li>`;
+  const jours = [...new Set(liste.map((o) => o.date.slice(0, 10)))];
+  $('#liste-operations').innerHTML = jours.length
+    ? jours.map((j) => {
+        const duJour = liste.filter((o) => o.date.startsWith(j));
+        const groupes = [...new Set(duJour.map((o) => o.enveloppe ?? 'Hors enveloppes'))];
+        return `<li class="titre-jour">${jourCourt(j)}</li>` + groupes.map((g) => {
+          const ops = duJour.filter((o) => (o.enveloppe ?? 'Hors enveloppes') === g);
+          const depense = -somme(ops.filter((o) => !o.rembourse && o.categorie !== 'Ne compte pas'));
+          return `<li class="titre-enveloppe"><span>${esc(g)}</span>${g !== 'Hors enveloppes' && depense ? `<span>${euros(depense)}</span>` : ''}</li>` +
+            ops.map(ligneOperation).join('');
+        }).join('');
       }).join('')
     : '<li class="vide">Aucune opération.</li>';
 }
 $('#recherche').addEventListener('input', afficherOperations);
 
-$('#liste-operations').addEventListener('click', async (e) => {
-  const id = e.target.dataset.pasRembourse;
-  if (!id) return;
-  await api(`/api/operations/${encodeURIComponent(id)}`, { method: 'PATCH', body: { pasRembourse: true } }).catch((err) => alert(err.message));
-  chargerOperations();
+// Glisser une opération : vers la gauche → changer de catégorie, vers la droite → « à rembourser ».
+// Un simple appui ouvre les mêmes actions.
+let glisse = null;
+let finGlisse = 0;
+const listeOps = $('#liste-operations');
+listeOps.addEventListener('touchstart', (e) => {
+  const li = e.target.closest('li.op');
+  if (li && !e.target.closest('button')) glisse = { li, x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, actif: false };
+}, { passive: true });
+listeOps.addEventListener('touchmove', (e) => {
+  if (!glisse) return;
+  const dx = e.touches[0].clientX - glisse.x;
+  const dy = e.touches[0].clientY - glisse.y;
+  if (!glisse.actif && Math.abs(dy) > Math.abs(dx)) { glisse = null; return; } // on fait défiler la liste
+  glisse.actif = Math.abs(dx) > 8;
+  glisse.dx = Math.max(-120, Math.min(120, dx));
+  glisse.li.querySelector('.contenu').style.transform = `translateX(${glisse.dx}px)`;
+  glisse.li.classList.toggle('vers-droite', glisse.dx > 0);
+}, { passive: true });
+listeOps.addEventListener('touchend', () => {
+  if (!glisse) return;
+  const { li, dx, actif } = glisse;
+  glisse = null;
+  li.querySelector('.contenu').style.transform = '';
+  if (!actif) return;
+  finGlisse = Date.now();
+  if (dx <= -70) ouvrirActions(li.dataset.id, true);
+  else if (dx >= 70) basculerARembourser(li.dataset.id);
 });
 
-$('#liste-operations').addEventListener('change', async (e) => {
-  const { id, description } = e.target.dataset;
-  const categorie = e.target.value;
+listeOps.addEventListener('click', async (e) => {
+  const pas = e.target.dataset.pasRembourse;
+  if (pas) {
+    await api(`/api/operations/${encodeURIComponent(pas)}`, { method: 'PATCH', body: { pasRembourse: true } }).catch((err) => alert(err.message));
+    return chargerOperations();
+  }
+  const li = e.target.closest('li.op');
+  if (li && Date.now() - finGlisse > 400) ouvrirActions(li.dataset.id);
+});
+
+async function basculerARembourser(id) {
+  const o = operations.find((x) => x.id === id);
+  if (!o) return;
+  await api(`/api/operations/${encodeURIComponent(id)}`, { method: 'PATCH', body: { aRembourser: !o.aRembourser } }).catch((err) => alert(err.message));
+  chargerOperations();
+}
+
+// Feuille d'actions d'une opération : catégories en gros boutons, « à rembourser », supprimer (saisie à la main).
+let opActive = null;
+function ouvrirActions(id, categoriesSeules = false) {
+  opActive = operations.find((x) => x.id === id);
+  if (!opActive) return;
+  const o = opActive;
+  $('#titre-op').innerHTML = `${esc(o.description)} <span class="cout">${euros(o.montant)}</span><small>${jourCourt(o.date)}</small>`;
+  $('#grille-categories').innerHTML = etat.categories.map((c) =>
+    `<button type="button" class="choix ${c === o.categorie ? 'actif' : ''}" data-categorie="${esc(c)}">${esc(c)}</button>`).join('');
+  $('#actions-op').hidden = categoriesSeules;
+  $('#basculer-rembourser').textContent = o.aRembourser ? '✓ À rembourser (retirer)' : '💸 À rembourser';
+  $('#supprimer-op').hidden = !o.manuelle;
+  $('#feuille-op').showModal();
+}
+
+$('#grille-categories').addEventListener('click', async (e) => {
+  const categorie = e.target.dataset.categorie;
+  const o = opActive;
+  if (!categorie || !o) return;
+  $('#feuille-op').close();
+  if (categorie === o.categorie) return;
   try {
-    await api(`/api/operations/${encodeURIComponent(id)}`, { method: 'PATCH', body: { categorie } });
+    await api(`/api/operations/${encodeURIComponent(o.id)}`, { method: 'PATCH', body: { categorie } });
     const motCle = prompt(
       `Classer aussi en « ${categorie} » toutes les opérations qui contiennent ce mot-clé (passées et futures) ?\n` +
       'Raccourcis-le si besoin (par exemple juste le nom du commerçant), ou Annuler.',
-      description
+      o.description
     );
     if (motCle?.trim()) {
       const r = await api('/api/regles', { method: 'POST', body: { motCle, categorie } });
       alert(`Règle créée. ${r.changees} autre(s) opération(s) reclassée(s).`);
     }
-    tableau = null;
-    chargerOperations();
   } catch (err) {
     alert(err.message);
+  }
+  tableau = null;
+  chargerOperations();
+});
+
+$('#basculer-rembourser').addEventListener('click', () => {
+  $('#feuille-op').close();
+  basculerARembourser(opActive.id);
+});
+
+$('#supprimer-op').addEventListener('click', async () => {
+  $('#feuille-op').close();
+  if (!confirm(`Supprimer « ${opActive.description} » (${euros(opActive.montant)}) ?`)) return;
+  await api(`/api/operations/${encodeURIComponent(opActive.id)}`, { method: 'DELETE' }).catch((err) => alert(err.message));
+  chargerOperations();
+});
+
+document.querySelectorAll('dialog [data-fermer]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+
+// --- Ajout rapide -------------------------------------------------------------
+// Montant, commerçant (auto-complétion), catégorie suggérée : « Ajouter ». La ligne du relevé la remplacera.
+let commercants = [];
+$('#ajouter').addEventListener('click', async () => {
+  const f = $('#form-ajout');
+  f.reset();
+  dire(f, '');
+  f.date.value = new Date().toLocaleDateString('sv-SE');
+  f.categorie.innerHTML = etat.depenses.map((c) => `<option>${esc(c)}</option>`).join('');
+  $('#feuille-ajout').showModal();
+  f.montant.focus();
+  commercants = await api('/api/commercants').catch(() => []);
+  $('#liste-commercants').innerHTML = commercants.map((c) => `<option value="${esc(c.nom)}"></option>`).join('');
+});
+
+let attenteSuggestion;
+$('#form-ajout').description.addEventListener('input', (e) => {
+  clearTimeout(attenteSuggestion);
+  const description = e.target.value.trim();
+  if (!description) return;
+  attenteSuggestion = setTimeout(async () => {
+    const { categorie } = await api(`/api/suggestion?description=${encodeURIComponent(description)}`).catch(() => ({}));
+    if (categorie && etat.depenses.includes(categorie)) $('#form-ajout').categorie.value = categorie;
+  }, 250);
+});
+
+$('#form-ajout').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api('/api/operations', {
+      method: 'POST',
+      body: { montant: Number(f.montant.value.replace(',', '.')), description: f.description.value, categorie: f.categorie.value, date: f.date.value },
+    });
+    $('#feuille-ajout').close();
+    tableau = null;
+    afficherOnglet();
+  } catch (err) {
+    dire(f, err.message);
   }
 });
 

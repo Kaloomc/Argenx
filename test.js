@@ -292,3 +292,59 @@ test('enveloppes : plafond à 0 € sans dépense = pas d’alerte', () => {
   const u = calculer([{ date: '2026-11-03 20:00:00', description: 'Uber Eats', montant: -20, categorie: 'Restos & fast-food' }], config, '2026-11-04', 'semaine');
   assert.strictEqual(u.enveloppes[1].plafond.etat, 'rouge');
 });
+
+test('ajout rapide : saisie à la main, « à rembourser », remplacée par la ligne du relevé', async (t) => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { once } = require('events');
+  if (!process.env.DOSSIER_DONNEES) {
+    Object.assign(process.env, { DOSSIER_DONNEES: fs.mkdtempSync(path.join(os.tmpdir(), 'argenx-test-')), APP_PASSWORD: 'mdp-test' });
+    delete process.env.NOTION_TOKEN;
+  }
+  const serveur = require('./server').listen(0); // même serveur que le test d'accès s'il a déjà tourné
+  await once(serveur, 'listening');
+  t.after(() => {
+    serveur.close();
+    fs.rmSync(process.env.DOSSIER_DONNEES, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${serveur.address().port}`;
+  const connexion = await fetch(base + '/api/connexion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motDePasse: process.env.APP_PASSWORD }) });
+  const Cookie = connexion.headers.get('set-cookie').split(';')[0];
+  const appel = async (methode, chemin, corps, type = 'application/json') => {
+    const r = await fetch(base + chemin, { method: methode, headers: { Cookie, 'Content-Type': type }, body: corps && (type === 'application/json' ? JSON.stringify(corps) : corps) });
+    return { status: r.status, json: await r.json() };
+  };
+
+  // Catégorie suggérée : règles pour un commerçant inconnu.
+  assert.strictEqual((await appel('GET', '/api/suggestion?description=Auchan')).json.categorie, 'Courses');
+  assert.strictEqual((await appel('POST', '/api/operations', { montant: 0, description: 'Auchan' })).status, 400);
+  assert.strictEqual((await appel('POST', '/api/operations', { montant: 12, description: '' })).status, 400);
+
+  // Saisie d'un kebab payé pour un ami, catégorie choisie à la main.
+  const ajout = await appel('POST', '/api/operations', { montant: 18.5, description: 'Gur Kebab', categorie: 'Restos & fast-food', date: '2026-10-20' });
+  assert.strictEqual(ajout.status, 200);
+  const id = ajout.json.id;
+  assert.strictEqual((await appel('PATCH', `/api/operations/${id}`, { aRembourser: true })).status, 200);
+  let liste = (await appel('GET', '/api/operations?mois=2026-10')).json;
+  let saisie = liste.find((o) => o.id === id);
+  assert.deepStrictEqual([saisie.montant, saisie.manuelle, saisie.aRembourser, saisie.enveloppe], [-18.5, true, true, 'Resto & fast-food']);
+  assert.ok((await appel('GET', '/api/commercants')).json.some((c) => c.nom === 'Gur Kebab' && c.categorie === 'Restos & fast-food'));
+  assert.strictEqual((await appel('GET', '/api/suggestion?description=gur%20kebab')).json.categorie, 'Restos & fast-food');
+
+  // Le relevé arrive 2 jours plus tard avec le même montant : la saisie est remplacée, sans doublon.
+  const csv = 'Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\n' +
+    'CARD_PAYMENT,Current,2026-10-22 21:10:00,2026-10-23 09:00:00,GUR KEBAB LILLE,-18.50,0.00,EUR,COMPLETED,120.00\n';
+  const imp = await appel('POST', '/api/import', csv, 'text/plain');
+  assert.strictEqual(imp.json.remplacees, 1);
+  liste = (await appel('GET', '/api/operations?mois=2026-10')).json;
+  assert.ok(!liste.some((o) => o.id === id));
+  const ligne = liste.find((o) => o.description === 'GUR KEBAB LILLE');
+  assert.deepStrictEqual([ligne.manuelle, ligne.aRembourser, ligne.categorie, ligne.manuel], [false, true, 'Restos & fast-food', true]);
+
+  // Seule une saisie à la main se supprime.
+  assert.strictEqual((await appel('DELETE', `/api/operations/${ligne.id}`)).status, 400);
+  const autre = (await appel('POST', '/api/operations', { montant: 4, description: 'Boulangerie' })).json;
+  assert.strictEqual(autre.categorie, 'Restos & fast-food'); // pas choisie : classée par les règles (boulangerie)
+  assert.strictEqual((await appel('DELETE', `/api/operations/${autre.id}`)).status, 200);
+});

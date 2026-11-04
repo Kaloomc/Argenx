@@ -101,6 +101,16 @@ Basic-Fit est remboursé par le virement « salle » : une règle le met en **Ne
 - Trois couleurs seulement : **vert** ça tient ; **orange** 80 % utilisés, ou nettement plus vite que le temps (par exemple 60 % dépensés alors que 30 % de la semaine est passée) ; **rouge** dépassé.
 - Tout se règle dans ⚙️ Réglages : montants, plafond Uber Eats, revenus sûrs (460 € par défaut) et quelle catégorie va dans quelle enveloppe. L'appli affiche si le budget prévu dépasse les revenus sûrs.
 
+## Ajouter une dépense et la liste des dépenses
+
+- **Bouton +** (accueil et 📋 Dépenses) : montant, commerçant (auto-complétion sur ceux déjà vus), catégorie suggérée (celle de sa dernière dépense, sinon les règles), date du jour. Les enveloppes sont à jour tout de suite.
+- Quand le relevé Revolut arrive, la saisie est **remplacée** par la vraie ligne si le montant est identique, à 3 jours près. La ligne garde la catégorie choisie et la marque « à rembourser ». Pas de doublon.
+- **📋 Dépenses** : par jour, puis par enveloppe (avec le total du groupe).
+  - glisser vers la **gauche** : changer de catégorie (l'appli propose d'en faire une règle) ;
+  - glisser vers la **droite** : marquer « 💸 à rembourser » (ou l'enlever) ;
+  - un **appui** : les mêmes actions, et « Supprimer » pour une dépense ajoutée à la main (les lignes du relevé ne se suppriment pas : elles reviendraient au prochain import).
+- « À rembourser » n'est pour l'instant qu'une marque : le rapprochement avec le virement reçu et la dépense nette arrivent à l'étape suivante.
+
 ## Le budget du mois (onglet Insights)
 
 Fixe dans ⚙️ Réglages ce que tu peux dépenser par mois (400 € par défaut). L'épargne ne compte pas comme une dépense.

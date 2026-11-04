@@ -86,9 +86,8 @@
     <section id="operations">
       <h2>Dépenses</h2>
       <input id="recherche" type="search" placeholder="Chercher (Lidl, Uber…)" aria-label="Chercher une opération">
-      <p class="aide">Change la catégorie d'une opération si elle est mal classée : l'appli te proposera d'en faire une règle.
-        Choisis <strong>Ne compte pas</strong> pour qu'une opération n'apparaisse nulle part (budget, graphiques, analyses).
-        Un achat remboursé du même montant (par le magasin ou un proche) s'annule tout seul. Remboursé en partie ? Mets la somme reçue dans la même catégorie que l'achat : elle vient en déduction.</p>
+      <p class="aide">Glisse une dépense vers la <strong>gauche</strong> pour changer sa catégorie (l'appli propose d'en faire une règle), vers la <strong>droite</strong> pour la marquer « à rembourser ». Un appui ouvre les mêmes actions.
+        <strong>Ne compte pas</strong> la retire de partout. Un achat remboursé du même montant s'annule tout seul. Le bouton <strong>+</strong> ajoute une dépense tout de suite ; la ligne du relevé la remplacera.</p>
       <ul id="liste-operations" class="liste"></ul>
     </section>
 
@@ -152,6 +151,40 @@
       </div>
     </section>
   </main>
+
+  <button id="ajouter" class="fab" type="button" aria-label="Ajouter une dépense">+</button>
+
+  <dialog id="feuille-ajout" class="feuille">
+    <form id="form-ajout">
+      <h2>Nouvelle dépense</h2>
+      <label>Montant (€)
+        <input name="montant" class="montant" type="text" inputmode="decimal" pattern="[0-9]+([,.][0-9]{1,2})?" placeholder="0,00" autocomplete="off" required>
+      </label>
+      <label>Commerçant
+        <input name="description" list="liste-commercants" maxlength="100" placeholder="Auchan, KFC, Lime…" autocomplete="off" required>
+      </label>
+      <datalist id="liste-commercants"></datalist>
+      <div class="deux">
+        <label>Catégorie <select name="categorie"></select></label>
+        <label>Date <input name="date" type="date" required></label>
+      </div>
+      <p class="message" role="status"></p>
+      <div class="deux">
+        <button type="button" class="secondaire-neutre" data-fermer>Annuler</button>
+        <button type="submit">Ajouter</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="feuille-op" class="feuille">
+    <h2 id="titre-op"></h2>
+    <div id="grille-categories" class="grille-choix"></div>
+    <div id="actions-op" class="deux">
+      <button type="button" id="basculer-rembourser" class="secondaire-neutre">💸 À rembourser</button>
+      <button type="button" id="supprimer-op" class="secondaire">Supprimer</button>
+    </div>
+    <button type="button" class="secondaire-neutre" data-fermer>Fermer</button>
+  </dialog>
 
   <nav>
     <a href="#accueil">🏠<span>Accueil</span></a>
