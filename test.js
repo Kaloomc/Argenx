@@ -433,3 +433,110 @@ test('rapprochement : à rembourser, virement reçu, revenus sûrs et entrées v
 });
 
 function arrondi2(x) { return Math.round(x * 100) / 100; }
+
+test('Revolut par Enable Banking : jeton signé et lecture des opérations', () => {
+  const crypto = require('crypto');
+  const { jeton, versOperation } = require('./banque');
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const j = jeton('app-123', privateKey.export({ type: 'pkcs8', format: 'pem' }));
+  const [h, b, sig] = j.split('.');
+  assert.deepStrictEqual(JSON.parse(Buffer.from(h, 'base64url')), { typ: 'JWT', alg: 'RS256', kid: 'app-123' });
+  const corps = JSON.parse(Buffer.from(b, 'base64url'));
+  assert.deepStrictEqual([corps.iss, corps.aud, corps.exp - corps.iat], ['enablebanking.com', 'api.enablebanking.com', 3600]);
+  assert.ok(crypto.verify('RSA-SHA256', Buffer.from(`${h}.${b}`), publicKey, Buffer.from(sig, 'base64url')));
+
+  const carte = versOperation({ entry_reference: 'A1', status: 'BOOK', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '12.40', currency: 'EUR' },
+    booking_date: '2026-11-03', transaction_date: '2026-11-02', creditor: { name: 'AUCHAN' }, balance_after_transaction: { amount: '87.60', currency: 'EUR' } });
+  assert.deepStrictEqual(carte, { id: 'eb-A1', date: '2026-11-02 12:00:00', description: 'AUCHAN', montant: -12.4, solde: 87.6, type: 'card', source: 'banque' });
+  const recu = versOperation({ transaction_id: 'T9', status: 'PDNG', credit_debit_indicator: 'CRDT', transaction_amount: { amount: '25', currency: 'EUR' },
+    booking_date: '2026-11-04', debtor: { name: 'Lea Martin' }, debtor_account: { iban: 'FR7600000000000000000000000' } });
+  assert.deepStrictEqual([recu.montant, recu.description, recu.type, recu.provisoire], [25, 'Lea Martin', 'transfer', true]);
+  const pocket = versOperation({ status: 'BOOK', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '50', currency: 'EUR' }, booking_date: '2026-11-04', remittance_information: ['To pocket EUR Vacances'] });
+  assert.strictEqual(pocket.type, 'transfer'); // pour être classé en Épargne
+  assert.strictEqual(classer(pocket), 'Épargne');
+  assert.strictEqual(versOperation({ status: 'BOOK', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '9', currency: 'USD' }, booking_date: '2026-11-04' }), null);
+  assert.strictEqual(versOperation({ status: 'RJCT', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '9', currency: 'EUR' }, booking_date: '2026-11-04' }), null);
+});
+
+test('Revolut par Enable Banking : connexion, retour, récupération sans doublon avec le CSV', async (t) => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const crypto = require('crypto');
+  const { once } = require('events');
+  if (!process.env.DOSSIER_DONNEES) {
+    Object.assign(process.env, { DOSSIER_DONNEES: fs.mkdtempSync(path.join(os.tmpdir(), 'argenx-test-')), APP_PASSWORD: 'mdp-test' });
+    delete process.env.NOTION_TOKEN;
+  }
+  fs.mkdirSync(process.env.DOSSIER_DONNEES, { recursive: true });
+  const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  fs.writeFileSync(path.join(process.env.DOSSIER_DONNEES, 'enablebanking.pem'), privateKey.export({ type: 'pkcs8', format: 'pem' }));
+  process.env.ENABLE_BANKING_APP_ID = 'app-test';
+
+  // Faux Enable Banking ; le reste (le serveur Argenx local) passe par le vrai fetch.
+  const vraiFetch = global.fetch;
+  const appels = [];
+  const EB = 'https://api.enablebanking.com';
+  global.fetch = async (url, o = {}) => {
+    if (!String(url).startsWith(EB)) return vraiFetch(url, o);
+    const chemin = String(url).slice(EB.length);
+    appels.push(`${o.method} ${chemin.split('?')[0]}`);
+    assert.match(o.headers.Authorization, /^Bearer [\w-]+\.[\w-]+\.[\w-]+$/);
+    const corps = o.body && JSON.parse(o.body);
+    const transactions = [
+      { entry_reference: 'R1', status: 'BOOK', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '30.00', currency: 'EUR' }, booking_date: '2026-09-02', creditor: { name: 'LIDL' }, balance_after_transaction: { amount: '470.00', currency: 'EUR' } },
+      { entry_reference: 'R2', status: 'BOOK', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '9.90', currency: 'EUR' }, booking_date: '2026-09-03', creditor: { name: 'KFC LILLE' } },
+      { status: 'PDNG', credit_debit_indicator: 'DBIT', transaction_amount: { amount: '4.20', currency: 'EUR' }, booking_date: '2026-09-04', creditor: { name: 'Boulangerie' } },
+    ];
+    let rep = null;
+    if (chemin.startsWith('/aspsps')) rep = { aspsps: [{ name: 'Revolut', country: 'FR', maximum_consent_validity: 15552000 }] };
+    else if (chemin === '/auth') rep = { url: `https://revolut.example/autoriser?state=${corps.state}`, authorization_id: 'x' };
+    else if (chemin === '/sessions') rep = { session_id: 'sess-1', accounts: [{ uid: 'cpt-eur', currency: 'EUR' }, { uid: 'cpt-usd', currency: 'USD' }], access: { valid_until: '2027-05-03T00:00:00Z' } };
+    else if (chemin.includes('/transactions')) rep = { transactions, continuation_key: null };
+    else if (chemin.includes('/balances')) rep = { balances: [{ balance_type: 'CLAV', balance_amount: { amount: '455.90', currency: 'EUR' } }] };
+    return { ok: !!rep, status: rep ? 200 : 404, json: async () => rep || { message: 'inconnu' } };
+  };
+  const serveur = require('./server').listen(0);
+  await once(serveur, 'listening');
+  t.after(() => {
+    global.fetch = vraiFetch;
+    delete process.env.ENABLE_BANKING_APP_ID;
+    serveur.close();
+    fs.rmSync(process.env.DOSSIER_DONNEES, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${serveur.address().port}`;
+  const connexion = await fetch(base + '/api/connexion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motDePasse: process.env.APP_PASSWORD }) });
+  const Cookie = connexion.headers.get('set-cookie').split(';')[0];
+  const appel = async (methode, chemin, corps, type = 'application/json') => {
+    const r = await fetch(base + chemin, { method: methode, headers: { Cookie, 'Content-Type': type }, body: corps && (type === 'application/json' ? JSON.stringify(corps) : corps) });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+
+  // Le Lidl est déjà venu par un CSV (même jour, même montant, même solde) : pas de doublon.
+  const csv = 'Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\n' +
+    'CARD_PAYMENT,Current,2026-09-02 18:30:00,2026-09-03 09:00:00,Lidl,-30.00,0.00,EUR,COMPLETED,470.00\n';
+  await appel('POST', '/api/import', csv, 'text/plain');
+  // Une saisie à la main du KFC : remplacée par la vraie ligne.
+  await appel('POST', '/api/operations', { montant: 9.9, description: 'KFC', date: '2026-09-03' });
+
+  assert.strictEqual((await appel('GET', '/api/banque')).json.connectee, false);
+  const { url } = (await appel('POST', '/api/banque/connexion')).json;
+  const state = new URL(url).searchParams.get('state');
+  assert.match(await (await fetch(`${base}/api/banque/retour?code=c&state=mauvais`)).text(), /expiré/); // sans effet
+  assert.strictEqual((await appel('GET', '/api/banque')).json.connectee, false);
+  const retour = await fetch(`${base}/api/banque/retour?code=code-ok&state=${state}`); // sans cookie, comme depuis Safari
+  assert.match(await retour.text(), /Revolut connecté/);
+  assert.match(await (await fetch(`${base}/api/banque/retour?code=code-ok&state=${state}`)).text(), /expiré/); // usage unique
+
+  // Attendre la première récupération lancée par le retour, puis en relancer une : rien ne double.
+  for (let i = 0; i < 100 && !(await appel('GET', '/api/banque')).json.derniere; i++) await new Promise((r) => setTimeout(r, 20));
+  const r2 = (await appel('POST', '/api/banque/recuperer')).json;
+  assert.deepStrictEqual([r2.ajoutees, r2.enAttente, r2.solde], [0, 1, 455.9]); // seule l'opération en attente revient (remplacée)
+  const sept = (await appel('GET', '/api/operations?mois=2026-09')).json;
+  assert.strictEqual(sept.filter((o) => o.montant === -30).length, 1);
+  assert.deepStrictEqual(sept.filter((o) => o.montant === -9.9).map((o) => [o.description, o.manuelle]), [['KFC LILLE', false]]);
+  assert.strictEqual(sept.filter((o) => o.description === 'Boulangerie').length, 1);
+  const etat = (await appel('GET', '/api/banque')).json;
+  assert.deepStrictEqual([etat.connectee, etat.validJusqua, etat.solde, etat.erreur], [true, '2027-05-03T00:00:00Z', 455.9, null]);
+  assert.ok(!appels.some((a) => a.includes('cpt-usd'))); // le compte en dollars n'est pas suivi
+});

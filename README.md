@@ -14,6 +14,10 @@ Appli web pour téléphone (PWA installable) qui range tes dépenses à partir d
 
 Pas d'IA : tout est fait par règles simples, expliquées plus bas. Les analyses décrivent tes dépenses ; ce ne sont pas des conseils financiers.
 
+## Revolut en automatique (sans CSV)
+
+Par l'Open Banking, via [Enable Banking](https://enablebanking.com) (gratuit pour relier ses propres comptes) : onglet **⬆️ Importer** → **🔗 Connecter Revolut** → tu valides dans l'appli Revolut. Ensuite, Argenx récupère tes opérations tout seul 4 fois par jour (et sur le bouton « Récupérer maintenant »), avec le solde réel. Les paiements en attente apparaissent « ⏳ en attente » et sont mis à jour à chaque récupération ; les opérations déjà importées par CSV et tes saisies du bouton + ne sont pas doublées. L'accès dure jusqu'à 180 jours, puis il faut reconnecter. Réglage : [docs/MISE-EN-LIGNE.md](docs/MISE-EN-LIGNE.md), section 10.
+
 ## Exporter le relevé depuis l'appli Revolut
 
 1. Ouvre l'appli Revolut, onglet **Accueil**, sur ton compte en **euros**.

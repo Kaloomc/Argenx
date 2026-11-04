@@ -124,6 +124,28 @@ Les opérations d'exemple (mode démo) ne partent jamais vers Notion.
 
 ---
 
+## 10. Revolut en automatique (Enable Banking)
+
+Plus besoin d'exporter des CSV : Argenx récupère tes opérations tout seul, 4 fois par jour.
+Tes identifiants Revolut ne passent jamais par Argenx : tu valides l'accès dans l'appli Revolut.
+
+1. **Enable Banking** (https://enablebanking.com/sign-in) → **Applications** → ton application :
+   - environnement **Production** ;
+   - adresse de retour (*redirect URL*) **exactement** : `https://teranga-nas.synology.me:8445/api/banque/retour` ;
+   - note l'**identifiant de l'application** (*Application ID*, une suite de chiffres et de lettres) ;
+   - **relie ton compte Revolut** (*Link accounts*) : c'est ce qui active l'application pour tes propres comptes (« mode restreint »).
+2. **La clé secrète** (le fichier `.pem` téléchargé à la création de l'application) : **File Station** → `docker/argenx/app/data/` →
+   envoie le fichier et renomme-le **`enablebanking.pem`**. Ne la mets jamais sur GitHub, ni dans un message.
+3. **Container Manager** → **Projet** → `argenx` → **Arrêter** → **Modifier** le YAML : `ENABLE_BANKING_APP_ID=` l'identifiant de l'étape 1 →
+   **Enregistrer** → **Démarrer**.
+4. Dans Argenx : onglet **⬆️ Importer** → **🔗 Connecter Revolut** → valide dans l'appli Revolut → page « Revolut connecté ✔ ».
+   Les opérations des 90 derniers jours arrivent (celles déjà importées par CSV ne sont pas doublées).
+
+L'accès dure jusqu'à 180 jours ; ensuite Argenx affiche « autorisation expirée » et il suffit de retoucher **Connecter Revolut**.
+L'import CSV reste possible en secours.
+
+---
+
 ## Dépannage
 
 | Problème | Piste |
@@ -134,6 +156,8 @@ Les opérations d'exemple (mode démo) ne partent jamais vers Notion.
 | `Notion : API token is invalid` | `NOTION_TOKEN` mal copié |
 | La page ne s'ouvre pas depuis la 4G | Redirection Freebox (étape 6) ou pare-feu DSM |
 | Avertissement de certificat | Étape 5 : le certificat n'est pas associé au port 8445 |
+| Importer : « Pas encore réglé sur le serveur » | `ENABLE_BANKING_APP_ID` vide, ou fichier `data/enablebanking.pem` absent ou mal nommé |
+| Erreur Enable Banking au retour de Revolut | Adresse de retour de l'application différente de `https://teranga-nas.synology.me:8445/api/banque/retour`, ou compte Revolut pas relié dans Enable Banking |
 | `fatal: detected dubious ownership` | La ligne `safe.directory` manque dans la commande du YAML |
 | Pas de carte « 🛒 Courses » dans 📊 Mois | `NOTION_PAGE_ID` différent entre Argenx et Repax, ou Repax pas encore lancé avec Notion |
 | Repax ne voit pas les dépenses de courses | Même page Notion ? Achats bien dans la catégorie Courses ? Sinon, Réglages → « Envoyer vers Notion » |

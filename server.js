@@ -8,6 +8,7 @@ const analyses = require('./analyses');
 const notion = require('./notion');
 const operationsDemo = require('./demo');
 const enveloppes = require('./enveloppes');
+const { versOperation } = require('./banque');
 
 const app = express();
 app.set('trust proxy', 1); // derrière le proxy inversé du NAS
@@ -34,6 +35,10 @@ app.post('/api/connexion', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Retour de chez Revolut : sans cookie (sur iPhone, il arrive souvent dans Safari et non dans l'appli installée).
+// Protégé par le « state » à usage unique créé au départ ; le code reçu ne sert qu'avec la clé secrète du serveur.
+app.get('/api/banque/retour', (req, res, next) => retourBanque(req, res).catch(next));
+
 app.use('/api', (req, res, next) => {
   if (!MOT_DE_PASSE || req.path === '/etat') return next();
   const cookie = (req.headers.cookie || '').match(/(?:^|;\s*)argenx=([a-f0-9]+)/)?.[1] || '';
@@ -43,6 +48,7 @@ app.use('/api', (req, res, next) => {
 
 // --- Données : fichiers JSON dans data/ (ignoré par Git) ----------------------
 const DOSSIER = process.env.DOSSIER_DONNEES || path.join(__dirname, 'data'); // autre dossier : pour les tests
+const banque = require('./banque')(DOSSIER);
 
 function lire(nom) {
   try {
@@ -228,7 +234,7 @@ app.get('/api/operations', (req, res) => {
       const { id, date, description, montant, categorie, manuel, manuelle, rembourse } = o;
       const j = rembourse && parId.get(rembourse);
       return {
-        id, date, description, montant, categorie, manuel: !!manuel, manuelle: !!manuelle,
+        id, date, description, montant, categorie, manuel: !!manuel, manuelle: !!manuelle, provisoire: !!o.provisoire,
         enveloppe: reglages.enveloppes.find((e) => e.categories.includes(categorie))?.nom ?? null,
         rembourse: j ? { date: j.date, description: j.description, montant: j.montant } : null,
         // Dépense avancée pour quelqu'un : montant attendu, déjà reçu.
@@ -434,6 +440,95 @@ app.delete('/api/pas-abonnements', (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Connexion automatique à Revolut (Enable Banking) -----------------------------------
+// data/banque.json : session ouverte chez Enable Banking, comptes suivis, dernière récupération, solde.
+const lien = { sessionId: null, comptes: [], validJusqua: null, derniere: null, solde: null, erreur: null, ...lire('banque.json') };
+const sauverLien = () => ecrire('banque.json', lien);
+const etatsBanque = new Map(); // state → heure limite (15 min), à usage unique
+let recuperationEnCours = false;
+const adresseRetour = (req) => process.env.ENABLE_BANKING_RETOUR || `${req.protocol}://${req.get('host')}/api/banque/retour`;
+
+app.get('/api/banque', (req, res) => {
+  res.json({
+    configuree: banque.configuree(), connectee: !!lien.sessionId, retour: adresseRetour(req),
+    validJusqua: lien.validJusqua, derniere: lien.derniere, solde: lien.solde, erreur: lien.erreur, enCours: recuperationEnCours,
+  });
+});
+
+app.post('/api/banque/connexion', async (req, res) => {
+  verifier(banque.configuree(), 'Enable Banking n’est pas réglé : il manque ENABLE_BANKING_APP_ID ou le fichier de clé (voir docs/MISE-EN-LIGNE.md).');
+  const { url, state } = await banque.demarrer(adresseRetour(req));
+  etatsBanque.set(state, Date.now() + 15 * 60e3);
+  res.json({ url });
+});
+
+async function retourBanque(req, res) {
+  const page = (titre, texte) => res.type('html').send(`<!doctype html><html lang="fr"><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1"><title>Argenx</title>
+    <body style="font:18px/1.5 system-ui;padding:24px;max-width:520px;margin:auto;background:#121214;color:#f0efec">
+    <h1>${titre}</h1><p>${texte}</p><p><a style="color:#8c9eff" href="/#importer">Retour à Argenx</a></p></body></html>`);
+  const { code, state, error } = req.query;
+  const limite = etatsBanque.get(state);
+  etatsBanque.delete(state);
+  if (error || !code) return page('Connexion annulée', 'Revolut n’a pas donné l’accès. Tu peux réessayer depuis Argenx → Importer.');
+  if (!limite || limite < Date.now()) return page('Lien expiré', 'Relance « Connecter Revolut » depuis Argenx → Importer.');
+  Object.assign(lien, await banque.terminer(String(code)), { erreur: null });
+  sauverLien();
+  recupererBanque().catch(() => {}); // première récupération tout de suite
+  page('Revolut connecté ✔', 'Tes opérations arrivent dans Argenx (quelques secondes). Tu peux fermer cette page.');
+}
+
+app.post('/api/banque/recuperer', async (req, res) => {
+  verifier(lien.sessionId, 'Revolut n’est pas connecté.');
+  const r = await recupererBanque();
+  verifier(r, lien.erreur || 'Récupération déjà en cours.');
+  res.json(r);
+});
+
+// Récupère les opérations des comptes suivis et les range comme un import de CSV
+// (doublons écartés, saisies à la main remplacées). Les paiements en attente sont remplacés à chaque fois.
+async function recupererBanque() {
+  if (!lien.sessionId || !banque.configuree() || recuperationEnCours) return null;
+  recuperationEnCours = true;
+  try {
+    // 10 jours de recouvrement (opérations comptabilisées en retard) ; 90 jours la première fois.
+    const depuis = new Date(lien.derniere ? Date.parse(lien.derniere) - 10 * 864e5 : Date.now() - 90 * 864e5).toISOString().slice(0, 10);
+    const recues = [];
+    for (const uid of lien.comptes) recues.push(...(await banque.transactions(uid, depuis)).map(versOperation).filter(Boolean));
+    const exemple = recues.length > 0 && operations.some((o) => o.demo);
+    operations = operations.filter((o) => !(o.source === 'banque' && o.provisoire) && !(exemple && o.demo));
+    // Déjà venues par un CSV : même jour, même montant (et même solde quand les deux le donnent).
+    const prises = new Set();
+    const neuves = recues.filter((n) => {
+      if (operations.some((o) => o.id === n.id)) return true; // doublon exact : fusionner l'écarte
+      const csv = operations.find((o) => !o.source && !o.manuelle && !prises.has(o) && o.date.slice(0, 10) === n.date.slice(0, 10) &&
+        Math.abs(o.montant - n.montant) < 0.005 && (o.solde == null || n.solde == null || Math.abs(o.solde - n.solde) < 0.005));
+      if (!csv) return true;
+      prises.add(csv);
+      return false;
+    });
+    const r = fusionner(operations, neuves);
+    operations = r.operations;
+    const remplacees = remplacerSaisies(r.ajout);
+    reclasser();
+    sauverOperations();
+    const mois = [...new Set([...r.ajout, ...remplacees].filter((o) => !o.provisoire).map(analyses.moisDe))].sort();
+    if (notion.actif && mois.length) notion.synchroniser(mois, lignesNotion, coursesNotion);
+    lien.solde = await banque.solde(lien.comptes[0]).catch(() => lien.solde);
+    Object.assign(lien, { derniere: new Date().toISOString(), erreur: null });
+    return { ajoutees: r.ajout.filter((o) => !o.provisoire).length, enAttente: r.ajout.filter((o) => o.provisoire).length, remplacees: remplacees.length, solde: lien.solde };
+  } catch (err) {
+    console.error('Revolut :', err.message);
+    lien.erreur = [401, 403].includes(err.statut) || /expired|consent/i.test(err.message)
+      ? 'L’autorisation Revolut a expiré : touche « Connecter Revolut » dans l’onglet Importer.'
+      : err.message;
+    return null;
+  } finally {
+    recuperationEnCours = false;
+    sauverLien();
+  }
+}
+
 // --- Accueil : enveloppes ----------------------------------------------------------
 app.get('/api/accueil', (req, res) => {
   const vue = req.query.vue === 'mois' ? 'mois' : 'semaine';
@@ -554,6 +649,9 @@ module.exports = app; // pour les tests
 if (require.main === module) {
   const PORT = Number(process.env.PORT) || 3012;
   const pret = () => console.log(`Argenx sur http://localhost:${PORT} (Notion ${notion.actif ? 'activé' : 'non configuré : mode démo'})`);
+  // Revolut : une récupération peu après le démarrage, puis toutes les 6 heures (4 par jour, la limite habituelle sans toi).
+  setTimeout(recupererBanque, 15e3);
+  setInterval(recupererBanque, 6 * 3600e3);
   if (MOT_DE_PASSE) app.listen(PORT, pret);
   else {
     console.warn('APP_PASSWORD manquant : Argenx n’écoute que sur 127.0.0.1, il est injoignable depuis le réseau.');

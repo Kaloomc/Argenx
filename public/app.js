@@ -43,7 +43,7 @@ const CHARGER = {
   mois: () => chargerTableau(),
   analyses: () => chargerTableau(),
   operations: () => chargerOperations(),
-  importer: () => chargerEtat(),
+  importer: () => Promise.all([chargerEtat(), chargerBanque()]),
   reglages: () => chargerReglages(),
 };
 
@@ -335,6 +335,7 @@ function ligneOperation(o) {
   const r = o.rembourse;
   const badges = [
     o.manuelle && '<span class="badge-op">ajoutée à la main</span>',
+    o.provisoire && '<span class="badge-op orange">⏳ en attente</span>',
     o.aRembourser > 0 && (o.recu >= o.aRembourser
       ? `<span class="badge-op vert">✓ remboursé ${euros(o.recu)}</span>`
       : `<span class="badge-op orange">💸 à rembourser ${o.recu ? `${euros(o.recu)} / ` : ''}${euros(o.aRembourser)}</span>`),
@@ -580,6 +581,46 @@ $('#form-ajout').addEventListener('submit', async (e) => {
   } catch (err) {
     dire(f, err.message);
   }
+});
+
+// --- Revolut en automatique (Enable Banking) -----------------------------------
+async function chargerBanque() {
+  const b = await api('/api/banque');
+  const date = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  $('#etat-banque').innerHTML = !b.configuree
+    ? 'Pas encore réglé sur le serveur : il faut l’identifiant de l’application Enable Banking et la clé secrète (voir le guide de mise en ligne).'
+    : !b.connectee
+      ? 'Prêt. Touche « Connecter Revolut » : tu valides l’accès dans l’appli Revolut, puis tes opérations arrivent toutes seules, 4 fois par jour.'
+      : `✔ Connecté. Dernière récupération : <strong>${b.derniere ? date(b.derniere) : 'en cours…'}</strong>${b.solde != null ? ` · solde ${euros(b.solde)}` : ''}.<br>
+         Accès valable jusqu’au ${b.validJusqua ? new Date(b.validJusqua).toLocaleDateString('fr-FR') : '?'}.`;
+  if (b.erreur) $('#etat-banque').innerHTML += `<br><span class="rouge">${esc(b.erreur)}</span>`;
+  $('#connecter-banque').hidden = !b.configuree || (b.connectee && !b.erreur);
+  $('#connecter-banque').textContent = b.connectee ? '🔗 Reconnecter Revolut' : '🔗 Connecter Revolut';
+  $('#recuperer-banque').hidden = !b.connectee;
+}
+
+$('#connecter-banque').addEventListener('click', async () => {
+  try {
+    const { url } = await api('/api/banque/connexion', { method: 'POST' });
+    location.href = url; // page Revolut ; le retour arrive sur /api/banque/retour
+  } catch (err) {
+    dire($('#carte-banque'), err.message);
+  }
+});
+
+$('#recuperer-banque').addEventListener('click', async () => {
+  const b = $('#recuperer-banque');
+  b.disabled = true;
+  dire($('#carte-banque'), 'Récupération…');
+  try {
+    const r = await api('/api/banque/recuperer', { method: 'POST' });
+    dire($('#carte-banque'), `✔ ${r.ajoutees} nouvelle(s) opération(s)${r.enAttente ? `, ${r.enAttente} en attente` : ''}${r.remplacees ? `, ${r.remplacees} saisie(s) remplacée(s)` : ''}.`);
+    tableau = null;
+  } catch (err) {
+    dire($('#carte-banque'), err.message);
+  }
+  b.disabled = false;
+  chargerBanque();
 });
 
 // --- Import ------------------------------------------------------------------

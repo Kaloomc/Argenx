@@ -20,6 +20,9 @@ services:
       # (vide = mode démo, pas d'envoi vers Notion ni de lien avec Repax)
       - NOTION_TOKEN=
       - NOTION_PAGE_ID=
+      # Revolut en automatique (Enable Banking) : identifiant de l'application ; vide = pas de connexion.
+      # La clé secrète va dans /docker/argenx/app/data/enablebanking.pem (jamais sur GitHub).
+      - ENABLE_BANKING_APP_ID=
     volumes:
       - ./app:/app
     working_dir: /app
