@@ -3,7 +3,7 @@
 const { normaliser, arrondi } = require('./csv');
 const { contient } = require('./categories');
 
-// Réglages de départ (modifiables dans ⚙️ Réglages) : tout tient dans 460 €/mois.
+// Réglages de départ (modifiables dans Réglages) : tout tient dans 460 €/mois.
 // Alimentation 400 € (courses ≈ 182 € + resto ≈ 217 €), achats libres 60 € dont l'abonnement Claude (≈ 22 €).
 const ENVELOPPES_DEFAUT = [
   { id: 'courses', nom: 'Courses', parSemaine: 42, categories: ['Courses'] },

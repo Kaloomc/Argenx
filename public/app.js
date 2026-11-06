@@ -3,6 +3,8 @@ const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const euros = (n) => (n ?? 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 const euros0 = (n) => (n ?? 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); // vues d'ensemble : à l'euro près
+// Icône du sprite SVG d'index.html (couleur du texte).
+const ico = (nom) => `<svg class="ico" aria-hidden="true"><use href="#i-${nom}"/></svg>`;
 const nomMois = (m, mois = 'long') => new Date(m + '-15T12:00:00').toLocaleDateString('fr-FR', { month: mois, year: 'numeric' });
 const jourCourt = (iso) => new Date(iso.slice(0, 10) + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
 
@@ -24,7 +26,7 @@ const dire = (el, texte) => {
 
 const barre = (valeur, max) => {
   const pc = max > 0 ? Math.min(100, (valeur / max) * 100) : 100;
-  return `<div class="barre"><div style="width:${pc}%" class="${valeur > max ? 'depasse' : ''}"></div></div>`;
+  return `<div class="barre" role="progressbar" aria-valuemin="0" aria-valuemax="${Math.round(max)}" aria-valuenow="${Math.round(valeur)}"><div style="width:${pc}%" class="${valeur > max ? 'depasse' : ''}"></div></div>`;
 };
 
 // --- Couleurs des graphiques -------------------------------------------------
@@ -52,9 +54,13 @@ function afficherOnglet() {
   const id = location.hash.slice(1) || 'accueil';
   document.querySelectorAll('main > section').forEach((s) => s.classList.toggle('active', s.id === id));
   document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('active', a.hash === '#' + id));
-  $('#choix-mois').hidden = !['mois', 'analyses', 'operations'].includes(id) || !mois;
+  document.querySelectorAll('nav a').forEach((a) => (a.hash === '#' + id ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+  $('#barre-outils').hidden = !['mois', 'analyses', 'operations'].includes(id) || !mois;
   $('#ajouter').hidden = !['accueil', 'operations'].includes(id);
-  CHARGER[id]?.().catch((err) => console.error(err));
+  CHARGER[id]?.().then(() => statutErreur(false)).catch((err) => {
+    console.error(err);
+    if (err.message !== 'Connexion nécessaire') statutNotion(`Impossible de charger cet écran : ${err.message}`, true);
+  });
 }
 addEventListener('hashchange', afficherOnglet);
 
@@ -85,7 +91,7 @@ $('#form-connexion').addEventListener('submit', async (e) => {
 // --- Reste à dépenser (mois en cours seulement) ---------------------------------
 // Enveloppe du mois − épargne à remettre − dépenses du mois. Affiché sur l'accueil et dans Insights.
 function htmlReste(r) {
-  if (r.disponible == null) return '<p class="vide">Fixe l’enveloppe du mois dans ⚙️ Réglages pour savoir combien il te reste.</p>';
+  if (r.disponible == null) return '<p class="vide">Fixe l’enveloppe du mois dans Réglages pour savoir combien il te reste.</p>';
   const l = [`<div class="resume">
       <small>Reste à dépenser · ${nomMois(r.mois)}</small>
       <strong class="enorme ${r.reste < 0 ? 'rouge' : ''}">${euros0(r.reste)}</strong>
@@ -98,13 +104,13 @@ function htmlReste(r) {
   }
   if (r.enCours && r.projection != null) {
     const ecart = Math.round(r.disponible - r.projection);
-    l.push(`<p>À ce rythme, environ <strong>${euros0(r.projection)}</strong> en fin de mois : ${ecart >= 0 ? `<span class="vert">${euros0(ecart)} sous le disponible ✔</span>` : `<span class="rouge">${euros0(-ecart)} au-dessus ⚠</span>`}.</p>`);
+    l.push(`<p>À ce rythme, environ <strong>${euros0(r.projection)}</strong> en fin de mois : ${ecart >= 0 ? `<span class="vert">${ico('valide')} ${euros0(ecart)} sous le disponible</span>` : `<span class="rouge">${ico('alerte')} ${euros0(-ecart)} au-dessus</span>`}.</p>`);
   }
   if (r.epargne && !r.epargne.atteint) {
     l.push(`<div class="epargne"><div class="ligne-budget"><span>Épargne à reconstituer</span><strong>${euros0(r.epargne.remis)} / ${euros0(r.epargne.objectif)}</strong></div>${barre(r.epargne.remis, r.epargne.objectif)}</div>`);
   }
-  if (r.budgets.depasse) l.push(`<p class="rouge">Tes budgets par catégorie (${euros0(r.budgets.total)}) dépassent les ${euros0(r.disponible)} disponibles : ajuste-les dans ⚙️ Réglages.</p>`);
-  if (r.phrases.length) l.push(`<ul class="alertes">${r.phrases.map((x) => `<li class="${x.etat}">${ETAT_ICONE[x.etat]} ${esc(x.texte)}</li>`).join('')}</ul>`);
+  if (r.budgets.depasse) l.push(`<p class="rouge">Tes budgets par catégorie (${euros0(r.budgets.total)}) dépassent les ${euros0(r.disponible)} disponibles : ajuste-les dans Réglages.</p>`);
+  if (r.phrases.length) l.push(`<ul class="alertes">${r.phrases.map(htmlAlerte).join('')}</ul>`);
   return l.join('');
 }
 
@@ -115,7 +121,8 @@ const memoire = {
 };
 let vue = memoire.lire('argenx-vue') === 'mois' ? 'mois' : 'semaine';
 const ETAT_TEXTE = { vert: 'ça tient', orange: 'attention', rouge: 'dépassé' };
-const ETAT_ICONE = { orange: '⚠️', rouge: '⛔' };
+const ETAT_ICONE = { orange: ico('alerte'), rouge: ico('stop') };
+const htmlAlerte = (x) => `<li class="${x.etat}">${ETAT_ICONE[x.etat]}<span>${esc(x.texte)}</span></li>`;
 
 document.querySelectorAll('.bascule button').forEach((b) => b.addEventListener('click', () => {
   vue = b.dataset.vue;
@@ -130,7 +137,7 @@ async function chargerAccueil() {
 
 // La barre montre ce qui reste : pleine au début, vide quand l'enveloppe est épuisée.
 const barreReste = (reste, budget, fine) =>
-  `<div class="barre ${fine ? 'fine' : ''}"><div style="width:${budget > 0 ? Math.max(0, Math.min(100, (reste / budget) * 100)) : 0}%"></div></div>`;
+  `<div class="barre ${fine ? 'fine' : ''}" role="progressbar" aria-label="Reste" aria-valuemin="0" aria-valuemax="${Math.round(budget)}" aria-valuenow="${Math.round(Math.max(0, reste))}"><div style="width:${budget > 0 ? Math.max(0, Math.min(100, (reste / budget) * 100)) : 0}%"></div></div>`;
 
 function afficherAccueil(a) {
   $('#reste-mois').innerHTML = htmlReste(a.resteMois);
@@ -139,7 +146,7 @@ function afficherAccueil(a) {
     <small>Il te reste ${periode}</small>
     <strong class="enorme ${a.reste < 0 ? 'rouge' : ''}">${euros(a.reste)}</strong>
     <small>${a.joursRestants} jour${a.joursRestants > 1 ? 's' : ''} restant${a.joursRestants > 1 ? 's' : ''} · environ ${euros(a.parJour)} par jour</small>`;
-  $('#alertes').innerHTML = a.alertes.slice(0, 3).map((x) => `<li class="${x.etat}">${ETAT_ICONE[x.etat]} ${esc(x.texte)}</li>`).join('');
+  $('#alertes').innerHTML = a.alertes.slice(0, 3).map(htmlAlerte).join('');
   $('#liste-enveloppes').innerHTML = a.enveloppes.map((e) => `
     <div class="carte enveloppe etat-${e.etat}">
       <div class="haut"><span class="nom">${esc(e.nom)}${e.mensuelle && a.vue === 'semaine' ? ' <small>ce mois-ci</small>' : ''}</span>
@@ -161,10 +168,10 @@ function afficherAccueil(a) {
       <div><small>Entrées variables</small><strong>${euros(r.variables)}</strong><small>pas dans le budget</small></div>
       <div><small>À récupérer</small><strong class="${r.aRecuperer ? 'orange' : ''}">${euros(r.aRecuperer)}</strong><small>${r.avances} avance${r.avances > 1 ? 's' : ''}</small></div>
     </div>
-    ${r.sourcesConfigurees ? '' : '<p class="aide">Pour reconnaître tes revenus sûrs : dans 📋 Dépenses, appuie sur un virement de tes parents → « ★ Revenu sûr ».</p>'}`;
+    ${r.sourcesConfigurees ? '' : '<p class="aide">Pour reconnaître tes revenus sûrs : dans Dépenses, appuie sur un virement de tes parents → « Revenu sûr ».</p>'}`;
   const hier = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
   $('#fraicheur').textContent = a.jusquau < hier
-    ? `Dépenses connues jusqu'au ${jourCourt(a.jusquau)}. Importe ton relevé Revolut (onglet ⬆️) pour être à jour.`
+    ? `Dépenses connues jusqu'au ${jourCourt(a.jusquau)}. Importe ton relevé Revolut (onglet Importer) pour être à jour.`
     : '';
 }
 
@@ -175,7 +182,7 @@ async function chargerTableau() {
   const choix = $('#choix-mois');
   const liste = tableau.moisDispo.includes(mois) ? tableau.moisDispo : [mois, ...tableau.moisDispo];
   choix.innerHTML = liste.map((m) => `<option value="${m}" ${m === mois ? 'selected' : ''}>${nomMois(m)}</option>`).join('');
-  choix.hidden = !['mois', 'analyses', 'operations'].includes(location.hash.slice(1) || 'accueil');
+  $('#barre-outils').hidden = !['mois', 'analyses', 'operations'].includes(location.hash.slice(1) || 'accueil');
   dessiner();
   afficherAnalyses();
   afficherCoursesRepax(tableau.mois);
@@ -189,14 +196,14 @@ async function afficherCoursesRepax(m) {
   if (el.hidden) return;
   const p = c.prevision;
   el.innerHTML = `
-    <h3>🛒 Courses</h3>
+    <h3>${ico('panier')} Courses</h3>
     <div class="ligne-budget">
       <div><small>Prévu (7 prochains jours)</small><strong>${euros(p.total)}</strong></div>
       <div><small>Dépensé ce mois-ci</small><strong>${euros(c.depense)}</strong></div>
     </div>
     <p>${p.repas} repas prévus dans Repax, dont <strong>${euros(p.resteAAcheter)}</strong> encore à acheter.</p>
     <p>Fin du mois estimée : <strong>${euros(c.finDeMois)}</strong> de courses (dépensé + reste à acheter)${c.budget
-      ? ` : ${c.finDeMois <= c.budget ? `<span class="vert">dans ton budget Courses de ${euros(c.budget)} ✔</span>` : `<span class="rouge">${euros(c.finDeMois - c.budget)} au-dessus de ton budget Courses ⚠</span>`}`
+      ? ` : ${c.finDeMois <= c.budget ? `<span class="vert">${ico('valide')} dans ton budget Courses de ${euros(c.budget)}</span>` : `<span class="rouge">${ico('alerte')} ${euros(c.finDeMois - c.budget)} au-dessus de ton budget Courses</span>`}`
       : ''}.</p>`;
 }
 
@@ -236,7 +243,7 @@ function dessiner() {
       labels: parts.map((c) => c.categorie),
       datasets: [{ data: parts.map((c) => c.montant), backgroundColor: parts.map((c) => couleur(c.categorie)), borderColor: surface, borderWidth: 2 }],
     },
-    options: { maintainAspectRatio: false, cutout: '55%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, boxHeight: 12 } }, tooltip: infobulle } },
+    options: { maintainAspectRatio: false, cutout: '55%', plugins: { legend: { display: false }, tooltip: infobulle } }, // la liste dessous sert de légende
   });
   // Le détail en liste (lisible sans les couleurs)
   $('#liste-categories').innerHTML = depenses.length
@@ -265,7 +272,7 @@ function afficherBudget() {
   if (r.enCours && (Date.now() - Date.parse(r.jusquau + 'T23:59:59')) / 864e5 > 3) {
     lignes.push(`<p class="aide">Opérations connues jusqu'au ${jourCourt(r.jusquau)} : importe un relevé récent pour être à jour.</p>`);
   }
-  if (tableau.rembourses) lignes.push(`<p class="aide">↔ ${tableau.rembourses} achat(s) remboursé(s) ce mois-ci, retirés des totaux.</p>`);
+  if (tableau.rembourses) lignes.push(`<p class="aide">${ico('echange')} ${tableau.rembourses} achat(s) remboursé(s) ce mois-ci, retirés des totaux.</p>`);
   $('#budget-mois').innerHTML = lignes.join('');
 }
 
@@ -280,7 +287,7 @@ function afficherAnalyses() {
         <li><span class="nom">${esc(c.categorie)}</span>
           <span class="cout ${c.montant > c.budget ? 'rouge' : ''}">${euros(c.montant)} <small>/ ${euros(c.budget)}</small></span>
           ${barre(c.montant, c.budget)}</li>`).join('')}</ul>`
-    : '<p class="vide">Aucun budget pour l’instant : fixe-les dans ⚙️ Réglages.</p>';
+    : '<p class="vide">Aucun budget pour l’instant : fixe-les dans Réglages.</p>';
 
   const actifs = t.abonnements.filter((a) => a.actif);
   $('#abonnements').innerHTML = t.abonnements.length
@@ -315,22 +322,22 @@ function ligneOperation(o) {
   const r = o.rembourse;
   const badges = [
     o.manuelle && '<span class="badge-op">ajoutée à la main</span>',
-    o.provisoire && '<span class="badge-op orange">⏳ en attente</span>',
+    o.provisoire && `<span class="badge-op orange">${ico('horloge')} en attente</span>`,
     o.aRembourser > 0 && (o.recu >= o.aRembourser
-      ? `<span class="badge-op vert">✓ remboursé ${euros(o.recu)}</span>`
-      : `<span class="badge-op orange">💸 à rembourser ${o.recu ? `${euros(o.recu)} / ` : ''}${euros(o.aRembourser)}</span>`),
-    o.revenuSur && '<span class="badge-op vert">★ revenu sûr</span>',
-    ...(o.affectations || []).map((a) => `<span class="badge-op">↔ rembourse « ${esc(a.description)} » ${euros(a.montant)}</span>`),
+      ? `<span class="badge-op vert">${ico('valide')} remboursé ${euros(o.recu)}</span>`
+      : `<span class="badge-op orange">${ico('rembourser')} à rembourser ${o.recu ? `${euros(o.recu)} / ` : ''}${euros(o.aRembourser)}</span>`),
+    o.revenuSur && `<span class="badge-op vert">${ico('etoile')} revenu sûr</span>`,
+    ...(o.affectations || []).map((a) => `<span class="badge-op">${ico('echange')} rembourse « ${esc(a.description)} » ${euros(a.montant)}</span>`),
     o.montant > 0 && o.categorie === 'Revenus' && !o.revenuSur && !o.affectations?.length && !o.rembourse && '<span class="badge-op">entrée variable</span>',
     o.manuel && !o.manuelle && '<span class="badge-op">corrigée</span>',
   ].filter(Boolean).join('');
   const lien = r
-    ? `<span class="rembourse"><span>↔ ${o.montant < 0 ? 'remboursé par' : 'rembourse'} « ${esc(r.description)} » le ${jourCourt(r.date)} : ne compte pas</span>
+    ? `<span class="rembourse"><span>${ico('echange')} ${o.montant < 0 ? 'remboursé par' : 'rembourse'} « ${esc(r.description)} » le ${jourCourt(r.date)} : ne compte pas</span>
        <button class="petit secondaire" style="width:auto" data-pas-rembourse="${esc(o.id)}">Pas un remboursement</button></span>`
     : '';
   return `<li class="op ${r || o.categorie === 'Ne compte pas' ? 'annulee' : ''}" data-id="${esc(o.id)}">
-    <span class="fond fond-droite" aria-hidden="true">${o.montant > 0 ? '↔ Remboursement' : '💸 À rembourser'}</span>
-    <span class="fond fond-gauche" aria-hidden="true">Catégorie 🏷️</span>
+    <span class="fond fond-droite" aria-hidden="true">${o.montant > 0 ? `${ico('echange')} Remboursement` : `${ico('rembourser')} À rembourser`}</span>
+    <span class="fond fond-gauche" aria-hidden="true">Catégorie ${ico('etiquette')}</span>
     <div class="contenu">
       <span class="nom">${esc(o.description)}<small>${esc(o.categorie)}</small></span>
       <span class="cout ${o.montant > 0 ? 'vert' : ''}">${o.montant > 0 ? '+' : ''}${euros(o.montant)}${o.recu ? `<small>net ${euros(o.montant + o.recu)}</small>` : ''}</span>
@@ -407,7 +414,7 @@ $('#liste-a-rembourser').addEventListener('click', async (e) => {
   $('#feuille-rapprocher').close();
   try {
     const r = await api(`/api/operations/${encodeURIComponent(opActive.id)}/rapprocher`, { method: 'POST', body: { depense } });
-    alert(`${euros(r.montant)} rapprochés.${r.reste > 0 ? ` Il reste ${euros(r.reste)} à récupérer sur cette dépense.` : ' Dépense entièrement remboursée ✔'}`);
+    alert(`${euros(r.montant)} rapprochés.${r.reste > 0 ? ` Il reste ${euros(r.reste)} à récupérer sur cette dépense.` : ' Dépense entièrement remboursée'}`);
   } catch (err) {
     alert(err.message);
   }
@@ -445,7 +452,7 @@ function ouvrirActions(id, categoriesSeules = false) {
   $('#actions-op').hidden = categoriesSeules;
   $('#actions-depense').hidden = categoriesSeules || !depense;
   $('#actions-entree').hidden = categoriesSeules || depense;
-  $('#basculer-rembourser').textContent = o.aRembourser ? '✓ À rembourser (retirer)' : '💸 À rembourser';
+  $('#basculer-rembourser').innerHTML = o.aRembourser ? `${ico('valide')} À rembourser (retirer)` : `${ico('rembourser')} À rembourser`;
   $('#part-rembourser').hidden = !o.aRembourser;
   $('#montant-rembourser').value = o.aRembourser ? String(o.aRembourser).replace('.', ',') : '';
   $('#annuler-rapprochement').hidden = !o.affectations?.length;
@@ -571,11 +578,11 @@ async function chargerBanque() {
     ? 'Pas encore réglé sur le serveur : il faut l’identifiant de l’application Enable Banking et la clé secrète (voir le guide de mise en ligne).'
     : !b.connectee
       ? 'Prêt. Touche « Connecter Revolut » : tu valides l’accès dans l’appli Revolut, puis tes opérations arrivent toutes seules, 4 fois par jour.'
-      : `✔ Connecté. Dernière récupération : <strong>${b.derniere ? date(b.derniere) : 'en cours…'}</strong>${b.solde != null ? ` · solde ${euros(b.solde)}` : ''}.<br>
+      : `${ico('valide')} Connecté. Dernière récupération : <strong>${b.derniere ? date(b.derniere) : 'en cours…'}</strong>${b.solde != null ? ` · solde ${euros(b.solde)}` : ''}.<br>
          Accès valable jusqu’au ${b.validJusqua ? new Date(b.validJusqua).toLocaleDateString('fr-FR') : '?'}.`;
   if (b.erreur) $('#etat-banque').innerHTML += `<br><span class="rouge">${esc(b.erreur)}</span>`;
   $('#connecter-banque').hidden = !b.configuree || (b.connectee && !b.erreur);
-  $('#connecter-banque').textContent = b.connectee ? '🔗 Reconnecter Revolut' : '🔗 Connecter Revolut';
+  $('#connecter-banque').innerHTML = `${ico('lien')} ${b.connectee ? 'Reconnecter Revolut' : 'Connecter Revolut'}`;
   $('#recuperer-banque').hidden = !b.connectee;
 }
 
@@ -594,7 +601,7 @@ $('#recuperer-banque').addEventListener('click', async () => {
   dire($('#carte-banque'), 'Récupération…');
   try {
     const r = await api('/api/banque/recuperer', { method: 'POST' });
-    dire($('#carte-banque'), `✔ ${r.ajoutees} nouvelle(s) opération(s)${r.enAttente ? `, ${r.enAttente} en attente` : ''}${r.remplacees ? `, ${r.remplacees} saisie(s) remplacée(s)` : ''}.`);
+    dire($('#carte-banque'), `${r.ajoutees} nouvelle(s) opération(s)${r.enAttente ? `, ${r.enAttente} en attente` : ''}${r.remplacees ? `, ${r.remplacees} saisie(s) remplacée(s)` : ''}.`);
     tableau = null;
   } catch (err) {
     dire($('#carte-banque'), err.message);
@@ -622,7 +629,7 @@ $('#form-import').addEventListener('submit', async (e) => {
       i.autreDevise && `${i.autreDevise} dans une autre devise que l’euro`,
       i.illisibles && `${i.illisibles} illisible(s)`,
     ].filter(Boolean);
-    dire(f, `✔ ${r.ajoutees} opération(s) ajoutée(s), ${r.doublons} déjà connue(s).` +
+    dire(f, `${r.ajoutees} opération(s) ajoutée(s), ${r.doublons} déjà connue(s).` +
       (details.length ? ` Ignorées : ${details.join(', ')}.` : '') +
       (r.exempleEfface ? ' Les opérations d’exemple ont été effacées.' : ''));
     if (r.mois) mois = r.mois;
@@ -640,7 +647,7 @@ async function restaurer(f, fichier) {
   try {
     // En texte brut : le serveur ne limite pas sa taille comme pour le JSON habituel.
     const r = await api('/api/restaurer', { method: 'POST', brut: new Blob([await fichier.text()], { type: 'text/plain' }) });
-    dire(f, `✔ Sauvegarde du ${r.date} restaurée : ${r.operations} opérations.`);
+    dire(f, `Sauvegarde du ${r.date} restaurée : ${r.operations} opérations.`);
     mois = null;
     f.reset();
     chargerEtat();
@@ -708,7 +715,7 @@ $('#form-enveloppes').addEventListener('submit', async (e) => {
   try {
     const r = await api('/api/enveloppes', { method: 'PUT', body: { enveloppes, revenusSurs: Number($('#revenus-surs').value) } });
     enveloppesReglees = r.enveloppes;
-    dire(f, 'Enveloppes enregistrées ✔');
+    dire(f, 'Enveloppes enregistrées.');
   } catch (err) {
     dire(f, err.message);
   }
@@ -727,7 +734,7 @@ function bilanBudgets() {
   const dispo = enveloppe - aRemettre;
   const ecart = dispo - total;
   $('#bilan-budgets').innerHTML = `Total des budgets : <strong>${euros0(total)}</strong> pour ${euros0(dispo)} disponibles ce mois-ci →
-    ${ecart >= 0 ? `<span class="vert">${euros0(ecart)} de marge</span>` : `<span class="rouge">${euros0(-ecart)} au-dessus du disponible ⚠</span>`}.`;
+    ${ecart >= 0 ? `<span class="vert">${euros0(ecart)} de marge</span>` : `<span class="rouge">${ico('alerte')} ${euros0(-ecart)} au-dessus du disponible</span>`}.`;
 }
 $('#form-budgets').addEventListener('input', bilanBudgets);
 $('#form-epargne').addEventListener('input', bilanBudgets);
@@ -745,7 +752,7 @@ $('#form-epargne').addEventListener('submit', async (e) => {
   const f = e.target;
   try {
     await api('/api/epargne', { method: 'PUT', body: { montant: Number($('#epargne-montant').value) || 0, mois: $('#epargne-mois').value || undefined } });
-    dire(f, 'Enregistré ✔');
+    dire(f, 'Enregistré.');
     tableau = null;
   } catch (err) {
     dire(f, err.message);
@@ -765,17 +772,17 @@ async function chargerReglages() {
   afficherReglagesEnveloppes(r);
   bilanBudgets();
   $('#liste-sources').innerHTML = r.sourcesRevenus.length
-    ? r.sourcesRevenus.map((s) => `<li><span class="nom">★ « ${esc(s.motCle)} »</span>
+    ? r.sourcesRevenus.map((s) => `<li><span class="nom">${ico('etoile')} « ${esc(s.motCle)} »</span>
         <button class="petit secondaire" style="width:auto" data-retirer-source="${esc(s.motCle)}">Retirer</button></li>`).join('')
-    : '<li class="vide">Aucun. Dans 📋 Dépenses, appuie sur un virement de tes parents → « ★ Revenu sûr ».</li>';
+    : '<li class="vide">Aucun. Dans Dépenses, appuie sur un virement de tes parents → « Revenu sûr ».</li>';
   $('#liste-regles').innerHTML = r.regles.length
     ? r.regles.map((g) => `<li><span class="nom">« ${esc(g.motCle)} » → ${esc(g.categorie)}</span>
         <button class="petit secondaire" style="width:auto" data-supprimer="${esc(g.motCle)}">Supprimer</button></li>`).join('')
-    : '<li class="vide">Aucune règle. Corrige une opération dans 📋 Opérations pour en créer une.</li>';
+    : '<li class="vide">Aucune règle. Corrige une opération dans Dépenses pour en créer une.</li>';
   $('#liste-pas-abonnements').innerHTML = r.pasAbonnements.length
     ? r.pasAbonnements.map((p) => `<li><span class="nom">${esc(p.nom)}</span>
         <button class="petit secondaire" style="width:auto" data-remettre="${esc(p.cle)}">Remettre</button></li>`).join('')
-    : '<li class="vide">Aucun. Dans 🔍 Analyses, « Pas un abonnement » retire un commerçant de la liste.</li>';
+    : '<li class="vide">Aucun. Dans Analyses, « Pas un abonnement » retire un commerçant de la liste.</li>';
   afficherNotion();
 }
 
@@ -786,7 +793,7 @@ $('#form-budgets').addEventListener('submit', async (e) => {
   const mensuel = $('#budget-mensuel').value === '' ? null : Number($('#budget-mensuel').value);
   try {
     await api('/api/budgets', { method: 'PUT', body: { budgets, mensuel } });
-    dire(f, 'Budgets enregistrés ✔');
+    dire(f, 'Budgets enregistrés.');
   } catch (err) {
     dire(f, err.message);
   }
@@ -848,6 +855,11 @@ function statutNotion(texte, erreur = false) {
   if (texte && !erreur) effacerStatut = setTimeout(() => { el.hidden = true; }, 6000);
 }
 
+// Efface un message d'erreur de chargement quand un écran se charge enfin (les messages de succès s'effacent seuls).
+function statutErreur() {
+  if ($('#statut-notion').classList.contains('erreur')) statutNotion('');
+}
+
 $('#rafraichir-notion').addEventListener('click', async () => {
   if (rafraichissement) return;
   rafraichissement = true;
@@ -858,7 +870,7 @@ $('#rafraichir-notion').addEventListener('click', async () => {
   try {
     const { lues } = await api('/api/notion/rafraichir', { method: 'POST' });
     const n = (titre, mot) => (lues[titre] == null ? `${mot} : absent` : `${mot} : ${lues[titre]}`);
-    statutNotion(`✔ Notion à jour — ${n('Liste de courses', 'courses Repax')}, ${n('Planning des repas', 'repas')}, ${n('Présence', 'présence Agendix')}.`);
+    statutNotion(`Notion à jour — ${n('Liste de courses', 'courses Repax')}, ${n('Planning des repas', 'repas')}, ${n('Présence', 'présence Agendix')}.`);
     tableau = null; // les chiffres affichés viennent de Notion en partie : on les relit
     afficherOnglet();
   } catch (err) {

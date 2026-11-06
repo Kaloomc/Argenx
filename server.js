@@ -95,7 +95,7 @@ function ecrire(nom, valeur) {
 const BUDGETS_DEMO = { Courses: 130, 'Restos & fast-food': 50, Transport: 35, Shopping: 50, Loisirs: 30 };
 
 let operations = lire('operations.json');
-// Basic-Fit est remboursé par le virement « salle » : il ne compte dans aucune enveloppe (règle supprimable dans ⚙️ Réglages).
+// Basic-Fit est remboursé par le virement « salle » : il ne compte dans aucune enveloppe (règle supprimable dans Réglages).
 const REGLE_SALLE = { motCle: 'Basic-Fit', categorie: 'Ne compte pas' };
 const REGLAGES_DEFAUT = () => ({
   version: 3,
@@ -116,7 +116,7 @@ if (enregistres && (enregistres.version ?? 1) < 2) {
   if (!reglages.regles.some((r) => normaliser(r.motCle) === normaliser(REGLE_SALLE.motCle))) reglages.regles.push({ ...REGLE_SALLE });
   reglages.version = 2;
 }
-// Version 3 : 117 € d'épargne d'octobre à remettre en novembre 2026 (une seule fois ; modifiable dans ⚙️ Réglages).
+// Version 3 : 117 € d'épargne d'octobre à remettre en novembre 2026 (une seule fois ; modifiable dans Réglages).
 if (enregistres && (enregistres.version ?? 1) < 3) {
   if (enregistres.epargneAReconstituer === undefined) reglages.epargneAReconstituer = { montant: 117, mois: '2026-11' };
   reglages.version = 3;
@@ -154,7 +154,7 @@ const attendu = (o) => (o.aRembourser === true ? -o.montant : Number(o.aRembours
 const recuPour = (id) => arrondi(operations.reduce((s, o) => s + (o.affectations || []).filter((a) => a.id === id).reduce((t, a) => t + a.montant, 0), 0));
 const resteARecuperer = (o) => (o.rembourse ? 0 : Math.max(0, arrondi(attendu(o) - recuPour(o.id))));
 const affecte = (o) => arrondi((o.affectations || []).reduce((s, a) => s + a.montant, 0));
-// Revenu sûr : la description contient un des mots-clés de ⚙️ Réglages → Revenus sûrs.
+// Revenu sûr : la description contient un des mots-clés de Réglages → Revenus sûrs.
 const estRevenuSur = (o) => o.montant > 0 && reglages.sourcesRevenus.some((s) => contient(normaliser(o.description), normaliser(s.motCle)));
 const aujourdhui = () => new Date().toLocaleDateString('sv-SE'); // "2026-11-03", heure de Paris (TZ)
 
@@ -593,7 +593,7 @@ async function retourBanque(req, res) {
   Object.assign(lien, await banque.terminer(String(code)), { erreur: null });
   sauverLien();
   recupererBanque().catch(() => {}); // première récupération tout de suite
-  page('Revolut connecté ✔', 'Tes opérations arrivent dans Argenx (quelques secondes). Tu peux fermer cette page.');
+  page('Revolut connecté', 'Tes opérations arrivent dans Argenx (quelques secondes). Tu peux fermer cette page.');
 }
 
 app.post('/api/banque/recuperer', async (req, res) => {

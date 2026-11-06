@@ -17,7 +17,7 @@ Pas d'IA : tout est fait par règles simples, expliquées plus bas. Les analyses
 
 ## Revolut en automatique (sans CSV)
 
-Par l'Open Banking, via [Enable Banking](https://enablebanking.com) (gratuit pour relier ses propres comptes) : onglet **⬆️ Importer** → **🔗 Connecter Revolut** → tu valides dans l'appli Revolut. Ensuite, Argenx récupère tes opérations tout seul 4 fois par jour (et sur le bouton « Récupérer maintenant »), avec le solde réel. Les paiements en attente apparaissent « ⏳ en attente » et sont mis à jour à chaque récupération ; les opérations déjà importées par CSV et tes saisies du bouton + ne sont pas doublées. L'accès dure jusqu'à 180 jours, puis il faut reconnecter. Réglage : [docs/MISE-EN-LIGNE.md](docs/MISE-EN-LIGNE.md), section 10.
+Par l'Open Banking, via [Enable Banking](https://enablebanking.com) (gratuit pour relier ses propres comptes) : onglet **Importer** → **Connecter Revolut** → tu valides dans l'appli Revolut. Ensuite, Argenx récupère tes opérations tout seul 4 fois par jour (et sur le bouton « Récupérer maintenant »), avec le solde réel. Les paiements en attente apparaissent « en attente » et sont mis à jour à chaque récupération ; les opérations déjà importées par CSV et tes saisies du bouton + ne sont pas doublées. L'accès dure jusqu'à 180 jours, puis il faut reconnecter. Réglage : [docs/MISE-EN-LIGNE.md](docs/MISE-EN-LIGNE.md), section 10.
 
 ## Exporter le relevé depuis l'appli Revolut
 
@@ -25,7 +25,7 @@ Par l'Open Banking, via [Enable Banking](https://enablebanking.com) (gratuit pou
 2. Touche **•••** (Plus) sous le solde → **Relevé** (ou **Documents** → **Relevé de compte**).
 3. Choisis le format **Excel** (c'est un fichier **CSV**), puis la **période** (par exemple les 3 derniers mois).
 4. **Générer** → enregistre le fichier ou envoie-le-toi.
-5. Dans Argenx : onglet **⬆️ Importer** → choisis le fichier → **Importer**.
+5. Dans Argenx : onglet **Importer** → choisis le fichier → **Importer**.
 
 Les menus de Revolut changent de temps en temps : cherche « Relevé » / « Statement » et le format Excel/CSV.
 Tu peux réimporter une période qui recouvre la précédente : les opérations déjà connues sont ignorées.
@@ -60,11 +60,11 @@ Sans Notion configuré, l'appli démarre avec **6 mois d'opérations d'exemple e
 | Dépenses de la catégorie Courses (date, commerçant, montant) | Notion, base « Courses payées » (lue par Repax) |
 
 Argenx partage **la même page Notion** que Repax et Agendix (même `NOTION_TOKEN`, même `NOTION_PAGE_ID`) : les applis ne se parlent pas directement, elles lisent les bases des autres.
-Argenx lit « Liste de courses » et « Planning des repas » de Repax pour la carte « 🛒 Courses ». Le détail des autres catégories ne part jamais vers Notion.
+Argenx lit « Liste de courses » et « Planning des repas » de Repax pour la carte « Courses ». Le détail des autres catégories ne part jamais vers Notion.
 
 Le dossier `data/` n'est jamais envoyé sur GitHub. Les jetons et mots de passe sont seulement dans les variables d'environnement.
 
-**Sauvegarde** : ⚙️ Réglages → « Télécharger une sauvegarde » (un fichier `.json` avec opérations, règles et corrections). Pour la remettre : ⬆️ Importer, choisir ce fichier (remplace tout). Sur le NAS, une tâche Hyper Backup du dossier `/docker` couvre aussi ces fichiers.
+**Sauvegarde** : Réglages → « Télécharger une sauvegarde » (un fichier `.json` avec opérations, règles et corrections). Pour la remettre : Importer, choisir ce fichier (remplace tout). Sur le NAS, une tâche Hyper Backup du dossier `/docker` couvre aussi ces fichiers.
 
 ## Les règles de lecture du CSV
 
@@ -85,7 +85,7 @@ Dans l'ordre :
 6. sinon, virement à quelqu'un → **Proches**, le reste → **Autres**.
 
 Un remboursement garde la catégorie du commerçant et vient en déduction de ses dépenses.
-Quand tu changes la catégorie d'une opération (onglet 📋 Opérations), l'appli propose d'en faire une **règle** qui reclasse les opérations passées et futures (sauf celles que tu as corrigées à la main).
+Quand tu changes la catégorie d'une opération (onglet Opérations), l'appli propose d'en faire une **règle** qui reclasse les opérations passées et futures (sauf celles que tu as corrigées à la main).
 
 ## Les enveloppes (écran d'accueil)
 
@@ -99,41 +99,41 @@ L'accueil répond à « il me reste combien cette semaine ? ». Chaque enveloppe
 | Abonnements | 22 €/mois (Claude) | Abonnements |
 
 Total ≈ 460 €/mois (alimentation ≈ 400 € + achats libres 60 € dont l'abonnement), pour 460 € de revenus sûrs (parents 400 €, mère 60 €).
-Basic-Fit est remboursé par le virement « salle » : une règle le met en **Ne compte pas** (supprimable dans ⚙️ Réglages → Mes règles).
+Basic-Fit est remboursé par le virement « salle » : une règle le met en **Ne compte pas** (supprimable dans Réglages → Mes règles).
 
 - La semaine va du lundi au dimanche. La bascule **Semaine / Mois** montre les mêmes enveloppes sur le mois (42 €/semaine → 180 € en novembre).
 - Le grand chiffre = ce qui reste dans les enveloppes de la semaine (les abonnements, au mois, n'y entrent pas).
 - Trois couleurs seulement : **vert** ça tient ; **orange** 80 % utilisés, ou nettement plus vite que le temps (par exemple 60 % dépensés alors que 30 % de la semaine est passée) ; **rouge** dépassé.
-- Tout se règle dans ⚙️ Réglages : montants, plafond Uber Eats, revenus sûrs (460 € par défaut) et quelle catégorie va dans quelle enveloppe. L'appli affiche si le budget prévu dépasse les revenus sûrs.
+- Tout se règle dans Réglages : montants, plafond Uber Eats, revenus sûrs (460 € par défaut) et quelle catégorie va dans quelle enveloppe. L'appli affiche si le budget prévu dépasse les revenus sûrs.
 
 ## Ajouter une dépense et la liste des dépenses
 
-- **Bouton +** (accueil et 📋 Dépenses) : montant, commerçant (auto-complétion sur ceux déjà vus), catégorie suggérée (celle de sa dernière dépense, sinon les règles), date du jour. Les enveloppes sont à jour tout de suite.
+- **Bouton +** (accueil et Dépenses) : montant, commerçant (auto-complétion sur ceux déjà vus), catégorie suggérée (celle de sa dernière dépense, sinon les règles), date du jour. Les enveloppes sont à jour tout de suite.
 - Quand le relevé Revolut arrive, la saisie est **remplacée** par la vraie ligne si le montant est identique, à 3 jours près. La ligne garde la catégorie choisie et la marque « à rembourser ». Pas de doublon.
-- **📋 Dépenses** : par jour, puis par enveloppe (avec le total du groupe).
+- **Dépenses** : par jour, puis par enveloppe (avec le total du groupe).
   - glisser vers la **gauche** : changer de catégorie (l'appli propose d'en faire une règle) ;
-  - glisser vers la **droite** : marquer « 💸 à rembourser » (ou l'enlever) ;
+  - glisser vers la **droite** : marquer « à rembourser » (ou l'enlever) ;
   - un **appui** : les mêmes actions, et « Supprimer » pour une dépense ajoutée à la main (les lignes du relevé ne se suppriment pas : elles reviendraient au prochain import).
 
 ## Avances, remboursements et revenus sûrs
 
-- **Avance pour quelqu'un** : glisse la dépense à droite (« 💸 à rembourser », la dépense entière). Un appui permet de changer la part à récupérer (par exemple 20 € sur un resto à 40 €).
+- **Avance pour quelqu'un** : glisse la dépense à droite (« à rembourser », la dépense entière). Un appui permet de changer la part à récupérer (par exemple 20 € sur un resto à 40 €).
 - **Le virement arrive** : glisse-le à droite (« c'est un remboursement ») et choisis la dépense. Seul ce qui manque est rapproché ; le surplus reste une entrée variable. Plusieurs virements peuvent rembourser une même dépense.
 - Partout (enveloppes, Insights, Notion), on compte la **dépense nette** : 40 € avancés − 20 € rendus = 20 €. Le virement de remboursement ne compte **pas** comme une entrée.
 - Un remboursement exact (même montant, à moins de 30 jours) s'annule toujours tout seul, sans rien faire.
-- **Revenus sûrs** : appuie sur un virement de tes parents → « ★ Revenu sûr (toujours) » (mot-clé = l'expéditeur). La liste se gère dans ⚙️ Réglages → Revenus sûrs. Tout autre argent reçu est une **entrée variable**, jamais comptée comme acquise : le budget repose sur les revenus sûrs réglés (460 €).
+- **Revenus sûrs** : appuie sur un virement de tes parents → « Revenu sûr (toujours) » (mot-clé = l'expéditeur). La liste se gère dans Réglages → Revenus sûrs. Tout autre argent reçu est une **entrée variable**, jamais comptée comme acquise : le budget repose sur les revenus sûrs réglés (460 €).
 - L'accueil montre, pour le mois : revenus sûrs reçus / attendus, entrées variables, et ce qu'il reste **à récupérer** sur tes avances.
 
 ## Le reste à dépenser du mois (accueil et onglet Insights)
 
-Fixe dans ⚙️ Réglages l'**enveloppe du mois** (400 € par défaut) et, si besoin, l'**épargne à reconstituer** (montant et mois). Les revenus et l'épargne ne comptent jamais comme des dépenses.
+Fixe dans Réglages l'**enveloppe du mois** (400 € par défaut) et, si besoin, l'**épargne à reconstituer** (montant et mois). Les revenus et l'épargne ne comptent jamais comme des dépenses.
 
 - **disponible** = enveloppe − ce qu'il reste à remettre en épargne ce mois-là, soit objectif − déjà mis de côté (400 − 117 = 283 € au départ ; après 30 € versés, 400 − 87 = 313 €) ;
 - **reste à dépenser** = disponible − dépenses du mois ;
 - **par jour** = reste ÷ jours restants, aujourd'hui compris (accueil et widget comptent pareil) ;
 - **à ce rythme** = dépensé + (dépensé ÷ jours écoulés) × jours restants, donné à partir du 7e jour du mois seulement. Aucun mois précédent n'entre dans ces chiffres.
 - **Épargne à reconstituer** : la barre avance avec tes virements vers un coffre Revolut ce mois-ci (catégorie Épargne, net des retraits depuis un coffre) et disparaît quand le montant est atteint. Chaque euro versé libère un euro de disponible (les dépenses ne comptent pas l'épargne) : après 30 € versés, le reste à dépenser monte de 30 €.
-- **Budgets par catégorie** (⚙️ Réglages) : un bouton propose 140 € Courses, 40 € Restos, 30 € Transport, 30 € Loisirs, 43 € Autres (283 € en tout). Rien n'est appliqué sans enregistrement ; l'appli avertit si la somme dépasse le disponible.
+- **Budgets par catégorie** (Réglages) : un bouton propose 140 € Courses, 40 € Restos, 30 € Transport, 30 € Loisirs, 43 € Autres (283 € en tout). Rien n'est appliqué sans enregistrement ; l'appli avertit si la somme dépasse le disponible.
 - Jusqu'à 3 phrases « à surveiller » (budget d'une catégorie à 80 %, dépassé, ou consommé plus vite que le mois).
 
 Le « jour connu » est la date de ta dernière opération importée : importe un relevé récent pour que les calculs soient à jour.
@@ -156,8 +156,8 @@ La réponse (dates `AAAA-MM-JJ`, fuseau de Paris, `updatedAt` en ISO 8601 ; `nul
 
 ## Corriger à la main
 
-- **Ne compte pas** : catégorie à choisir dans 📋 Opérations pour une opération qui ne doit apparaître nulle part (virement entre tes propres comptes, avance pour quelqu'un…). Elle est barrée et sortie du budget, des graphiques et des analyses. Comme pour les autres catégories, l'appli propose d'en faire une règle.
-- **Pas un abonnement** : bouton sous chaque abonnement repéré, dans 🔍 Analyses. Le commerçant ne sera plus proposé ; tu peux le remettre dans ⚙️ Réglages.
+- **Ne compte pas** : catégorie à choisir dans Opérations pour une opération qui ne doit apparaître nulle part (virement entre tes propres comptes, avance pour quelqu'un…). Elle est barrée et sortie du budget, des graphiques et des analyses. Comme pour les autres catégories, l'appli propose d'en faire une règle.
+- **Pas un abonnement** : bouton sous chaque abonnement repéré, dans Analyses. Le commerçant ne sera plus proposé ; tu peux le remettre dans Réglages.
 
 ## Les remboursements
 
@@ -168,7 +168,7 @@ Remboursé **en partie** (par exemple un ami qui te rend sa moitié) : mets la s
 ## Les analyses
 
 - **Abonnements** : même commerçant, montant à ±10 %, tous les 25 à 35 jours, au moins 2 fois. Coût annuel = dernier montant × 12. Un supermarché où tu vas souvent n'est pas compté.
-- **Budgets** : à fixer par catégorie dans ⚙️ Réglages ; la barre passe au rouge en cas de dépassement.
+- **Budgets** : à fixer par catégorie dans Réglages ; la barre passe au rouge en cas de dépassement.
 
 ## Limites connues
 

@@ -15,13 +15,42 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Icônes : un seul jeu, trait de 2 px, couleur du texte (currentColor). Utilisées par <use href="#i-…"> et par ico() dans app.js. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/></symbol>
+    <symbol id="i-liste" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></symbol>
+    <symbol id="i-courbe" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></symbol>
+    <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/></symbol>
+    <symbol id="i-reglages" viewBox="0 0 24 24"><path d="M4 6h10M20 6h0M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="17" cy="6" r="2.5"/><circle cx="9" cy="12" r="2.5"/><circle cx="17" cy="18" r="2.5"/></symbol>
+    <symbol id="i-alerte" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.5"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+    <symbol id="i-actualiser" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-4L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4l2-2"/><path d="M20 20v-5h-5"/></symbol>
+    <symbol id="i-lien" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+    <symbol id="i-panier" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M3 4h3l2.5 11h10l2-8H7"/></symbol>
+    <symbol id="i-telecharger" viewBox="0 0 24 24"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></symbol>
+    <symbol id="i-loupe" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+    <symbol id="i-etiquette" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></symbol>
+    <symbol id="i-horloge" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-rembourser" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+    <symbol id="i-echange" viewBox="0 0 24 24"><path d="M7 7h13l-3-3"/><path d="M17 17H4l3 3"/></symbol>
+    <symbol id="i-etoile" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></symbol>
+    <symbol id="i-valide" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  </svg>
   <header>
-    <h1>Argenx</h1>
-    <span id="mode" class="badge" hidden>Mode démo</span>
-    <select id="choix-mois" aria-label="Mois"></select>
-    <button id="rafraichir-notion" class="icone" type="button" aria-label="Rafraîchir depuis Notion" title="Rafraîchir depuis Notion" hidden>🔄</button>
+    <div class="entete">
+      <h1>Argenx</h1>
+      <span id="mode" class="badge" hidden>Mode démo</span>
+      <div class="actions-entete">
+        <button id="rafraichir-notion" class="icone" type="button" aria-label="Rafraîchir depuis Notion" title="Rafraîchir depuis Notion" hidden><svg class="ico" aria-hidden="true"><use href="#i-actualiser"/></svg></button>
+        <button id="ajouter" class="icone" type="button" aria-label="Ajouter une dépense" title="Ajouter une dépense" hidden><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      </div>
+    </div>
   </header>
   <p id="statut-notion" class="statut-notion" role="status" hidden></p>
+  <div id="barre-outils" class="barre-outils" hidden>
+    <select id="choix-mois" aria-label="Mois affiché"></select>
+  </div>
 
   <main>
     <section id="connexion">
@@ -37,7 +66,7 @@
 
     <section id="accueil">
       <p id="bandeau-exemple" class="carte bandeau" hidden>Ce sont des <strong>opérations d'exemple fictives</strong>. Elles disparaissent dès ton premier import (onglet Importer).</p>
-      <div id="reste-mois" class="carte reste"></div>
+      <div id="reste-mois" class="carte reste" aria-live="polite"><p class="vide">Chargement…</p></div>
       <div class="bascule" role="group" aria-label="Période">
         <button type="button" data-vue="semaine">Semaine</button>
         <button type="button" data-vue="mois">Mois</button>
@@ -51,7 +80,7 @@
 
     <section id="mois">
       <h2>Insights</h2>
-      <div id="budget-mois" class="carte"></div>
+      <div id="budget-mois" class="carte"><p class="vide">Chargement…</p></div>
       <div id="courses-repax" class="carte" hidden></div>
       <div id="chiffres" class="carte chiffres"></div>
       <div class="carte">
@@ -67,7 +96,7 @@
         <h3>Top 10 des commerçants</h3>
         <ol id="top" class="liste"></ol>
       </div>
-      <a class="bouton secondaire-lien" href="#analyses">🔍 Analyses détaillées (budgets, abonnements)</a>
+      <a class="bouton secondaire-lien" href="#analyses"><svg class="ico" aria-hidden="true"><use href="#i-loupe"/></svg> Analyses détaillées (budgets, abonnements)</a>
     </section>
 
     <section id="analyses">
@@ -82,7 +111,10 @@
     <section id="operations">
       <h2>Dépenses</h2>
       <input id="recherche" type="search" placeholder="Chercher (Lidl, Uber…)" aria-label="Chercher une opération">
-      <p class="aide">Glisse à <strong>gauche</strong> : catégorie. À <strong>droite</strong> : « à rembourser » (une dépense) ou « c'est un remboursement » (une somme reçue). Un appui : toutes les actions.</p>
+      <details class="aide-geste">
+        <summary>Comment corriger une dépense ?</summary>
+        <p class="aide">Glisse à <strong>gauche</strong> : catégorie. À <strong>droite</strong> : « à rembourser » (une dépense) ou « c'est un remboursement » (une somme reçue). Un appui : toutes les actions.</p>
+      </details>
       <ul id="liste-operations" class="liste"></ul>
     </section>
 
@@ -90,8 +122,8 @@
       <h2>Revolut en automatique</h2>
       <div id="carte-banque" class="carte">
         <p id="etat-banque" class="aide">…</p>
-        <button id="connecter-banque" type="button">🔗 Connecter Revolut</button>
-        <button id="recuperer-banque" type="button" class="secondaire-neutre" hidden>🔄 Récupérer maintenant</button>
+        <button id="connecter-banque" type="button"><svg class="ico" aria-hidden="true"><use href="#i-lien"/></svg> Connecter Revolut</button>
+        <button id="recuperer-banque" type="button" class="secondaire-neutre" hidden><svg class="ico" aria-hidden="true"><use href="#i-actualiser"/></svg> Récupérer maintenant</button>
         <p class="message" role="status"></p>
       </div>
       <h2>Importer un relevé Revolut</h2>
@@ -167,17 +199,15 @@
       </div>
       <h3>Sauvegarde</h3>
       <div class="carte">
-        <p class="aide">Tes opérations, tes règles et tes corrections ne sont que sur le NAS (Notion n'a que les totaux). Télécharge une sauvegarde de temps en temps. Pour la remettre : onglet ⬆️ Importer, choisis le fichier .json.</p>
-        <a class="bouton" href="/api/sauvegarde" download>💾 Télécharger une sauvegarde</a>
+        <p class="aide">Tes opérations, tes règles et tes corrections ne sont que sur le NAS (Notion n'a que les totaux). Télécharge une sauvegarde de temps en temps. Pour la remettre : onglet Importer, choisis le fichier .json.</p>
+        <a class="bouton" href="/api/sauvegarde" download><svg class="ico" aria-hidden="true"><use href="#i-telecharger"/></svg> Télécharger une sauvegarde</a>
       </div>
     </section>
   </main>
 
-  <button id="ajouter" class="fab" type="button" aria-label="Ajouter une dépense">+</button>
-
-  <dialog id="feuille-ajout" class="feuille">
+  <dialog id="feuille-ajout" class="feuille" aria-labelledby="titre-ajout">
     <form id="form-ajout">
-      <h2>Nouvelle dépense</h2>
+      <h2 id="titre-ajout">Nouvelle dépense</h2>
       <label>Montant (€)
         <input name="montant" class="montant" type="text" inputmode="decimal" pattern="[0-9]+([,.][0-9]{1,2})?" placeholder="0,00" autocomplete="off" required>
       </label>
@@ -197,12 +227,12 @@
     </form>
   </dialog>
 
-  <dialog id="feuille-op" class="feuille">
+  <dialog id="feuille-op" class="feuille" aria-labelledby="titre-op">
     <h2 id="titre-op"></h2>
     <div id="grille-categories" class="grille-choix"></div>
     <div id="actions-op" class="actions">
       <div id="actions-depense" class="actions">
-        <button type="button" id="basculer-rembourser" class="secondaire-neutre">💸 À rembourser</button>
+        <button type="button" id="basculer-rembourser" class="secondaire-neutre"><svg class="ico" aria-hidden="true"><use href="#i-rembourser"/></svg> À rembourser</button>
         <form id="part-rembourser" class="avec-bouton">
           <label>On doit te rendre (€)
             <input id="montant-rembourser" type="text" inputmode="decimal" pattern="[0-9]+([,.][0-9]{1,2})?" required>
@@ -211,8 +241,8 @@
         </form>
       </div>
       <div id="actions-entree" class="actions">
-        <button type="button" id="est-remboursement" class="secondaire-neutre">↔ C'est un remboursement</button>
-        <button type="button" id="revenu-sur" class="secondaire-neutre">★ Revenu sûr (toujours)</button>
+        <button type="button" id="est-remboursement" class="secondaire-neutre"><svg class="ico" aria-hidden="true"><use href="#i-echange"/></svg> C'est un remboursement</button>
+        <button type="button" id="revenu-sur" class="secondaire-neutre"><svg class="ico" aria-hidden="true"><use href="#i-etoile"/></svg> Revenu sûr (toujours)</button>
         <button type="button" id="annuler-rapprochement" class="secondaire-neutre">Annuler le rapprochement</button>
       </div>
       <button type="button" id="supprimer-op" class="secondaire">Supprimer</button>
@@ -220,18 +250,18 @@
     <button type="button" class="secondaire-neutre" data-fermer>Fermer</button>
   </dialog>
 
-  <dialog id="feuille-rapprocher" class="feuille">
+  <dialog id="feuille-rapprocher" class="feuille" aria-labelledby="titre-rapprocher">
     <h2 id="titre-rapprocher"></h2>
     <div id="liste-a-rembourser" class="actions"></div>
     <button type="button" class="secondaire-neutre" data-fermer>Fermer</button>
   </dialog>
 
-  <nav>
-    <a href="#accueil">🏠<span>Accueil</span></a>
-    <a href="#operations">📋<span>Dépenses</span></a>
-    <a href="#mois">📈<span>Insights</span></a>
-    <a href="#importer">⬆️<span>Importer</span></a>
-    <a href="#reglages">⚙️<span>Réglages</span></a>
+  <nav aria-label="Navigation principale">
+    <a href="#accueil"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg><span>Accueil</span></a>
+    <a href="#operations"><svg class="ico" aria-hidden="true"><use href="#i-liste"/></svg><span>Dépenses</span></a>
+    <a href="#mois"><svg class="ico" aria-hidden="true"><use href="#i-courbe"/></svg><span>Insights</span></a>
+    <a href="#importer"><svg class="ico" aria-hidden="true"><use href="#i-import"/></svg><span>Importer</span></a>
+    <a href="#reglages"><svg class="ico" aria-hidden="true"><use href="#i-reglages"/></svg><span>Réglages</span></a>
   </nav>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
