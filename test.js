@@ -616,10 +616,14 @@ test('widget : GET /api/widget/argent', async (t) => {
     Object.assign(process.env, { DOSSIER_DONNEES: fs.mkdtempSync(path.join(os.tmpdir(), 'argenx-test-')), APP_PASSWORD: 'mdp-test' });
   }
   delete process.env.NOTION_TOKEN;
+  // Le serveur de production (NAS) a peut-être un vrai WIDGET_TOKEN dans son environnement : le test part de zéro, puis le remet.
+  const widgetAvant = process.env.WIDGET_TOKEN;
+  delete process.env.WIDGET_TOKEN;
   const serveur = require('./server').listen(0);
   await once(serveur, 'listening');
   t.after(() => {
-    delete process.env.WIDGET_TOKEN;
+    if (widgetAvant === undefined) delete process.env.WIDGET_TOKEN;
+    else process.env.WIDGET_TOKEN = widgetAvant;
     serveur.close();
   });
   const base = `http://127.0.0.1:${serveur.address().port}`;
