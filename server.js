@@ -99,9 +99,8 @@ let operations = lire('operations.json');
 const REGLE_SALLE = { motCle: 'Basic-Fit', categorie: 'Ne compte pas' };
 const REGLAGES_DEFAUT = () => ({
   version: 3,
-  regles: [{ ...REGLE_SALLE }], budgets: {}, budgetMensuel: 400, pasAbonnements: [], sourcesRevenus: [],
+  regles: [{ ...REGLE_SALLE }], budgets: {}, budgetMensuel: 400, sourcesRevenus: [],
   enveloppes: structuredClone(enveloppes.ENVELOPPES_DEFAUT),
-  revenusSurs: 460, // revenus fiables par mois (parents 400 €, mère 60 €) : la base du budget
   // Épargne à remettre sur un mois précis ({ montant, mois: "2026-11" }) : retirée de ce qui reste à dépenser. null = rien à remettre.
   epargneAReconstituer: null,
 });
@@ -112,7 +111,6 @@ const reglages = { ...REGLAGES_DEFAUT(), ...enregistres };
 // Réglages enregistrés avant la version 2 : nouvelles valeurs par défaut, une seule fois, sans écraser ce que tu as changé.
 if (enregistres && (enregistres.version ?? 1) < 2) {
   if (reglages.enveloppes.find((e) => e.id === 'fixes')?.parMois === 150) reglages.enveloppes = structuredClone(enveloppes.ENVELOPPES_DEFAUT);
-  if (reglages.revenusSurs === 495) reglages.revenusSurs = 460;
   if (!reglages.regles.some((r) => normaliser(r.motCle) === normaliser(REGLE_SALLE.motCle))) reglages.regles.push({ ...REGLE_SALLE });
   reglages.version = 2;
 }
@@ -541,23 +539,6 @@ app.put('/api/budgets', (req, res) => {
   res.json(reglages);
 });
 
-// « Pas un abonnement » : ce commerçant ne sera plus proposé comme abonnement (cle = nom normalisé).
-app.post('/api/pas-abonnements', (req, res) => {
-  const cle = normaliser(req.body?.cle).slice(0, 200);
-  const nom = String(req.body?.nom ?? cle).slice(0, 200);
-  verifier(cle, 'Abonnement inconnu');
-  reglages.pasAbonnements = [...reglages.pasAbonnements.filter((p) => p.cle !== cle), { cle, nom }];
-  sauverReglages();
-  res.json({ ok: true });
-});
-
-app.delete('/api/pas-abonnements', (req, res) => {
-  const cle = normaliser(req.query.cle);
-  reglages.pasAbonnements = reglages.pasAbonnements.filter((p) => p.cle !== cle);
-  sauverReglages();
-  res.json({ ok: true });
-});
-
 // --- Connexion automatique à Revolut (Enable Banking) -----------------------------------
 // data/banque.json : session ouverte chez Enable Banking, comptes suivis, dernière récupération, solde.
 const lien = { sessionId: null, comptes: [], validJusqua: null, derniere: null, solde: null, erreur: null, ...lire('banque.json') };
@@ -647,62 +628,32 @@ async function recupererBanque() {
   }
 }
 
-// --- Accueil : enveloppes ----------------------------------------------------------
+// --- Accueil : reste à dépenser du mois ------------------------------------------------
 app.get('/api/accueil', (req, res) => {
-  const vue = req.query.vue === 'mois' ? 'mois' : 'semaine';
-  const ops = comptees();
-  // Ce mois-ci : revenus sûrs reçus, entrées variables (jamais comptées comme acquises), avances à récupérer.
-  const m = enveloppes.periode(aujourdhui(), 'mois');
-  const recus = ops.filter((o) => o.categorie === 'Revenus' && o.montant > 0 && o.date.slice(0, 10) >= m.debut && o.date.slice(0, 10) <= m.fin);
-  const somme = (l) => arrondi(l.reduce((s, o) => s + o.montant, 0));
-  const avances = operations.filter((o) => o.montant < 0 && resteARecuperer(o) > 0);
-  res.json({
-    ...enveloppes.calculer(ops, reglages.enveloppes, aujourdhui(), vue),
-    resteMois: resteDuMois(aujourdhui().slice(0, 7)), // (reste = ce qui reste des enveloppes de la semaine)
-    jusquau: jusquau(),
-    revenus: {
-      surs: somme(recus.filter(estRevenuSur)),
-      attendus: reglages.revenusSurs,
-      variables: somme(recus.filter((o) => !estRevenuSur(o))),
-      aRecuperer: arrondi(avances.reduce((s, o) => s + resteARecuperer(o), 0)),
-      avances: avances.length,
-      sourcesConfigurees: reglages.sourcesRevenus.length > 0,
-    },
-  });
+  res.json({ resteMois: resteDuMois(aujourdhui().slice(0, 7)), jusquau: jusquau() });
 });
 
-// Montants et catégories des enveloppes, plafond Uber Eats, revenus fiables.
+// Quelle catégorie va dans quelle enveloppe (groupes de la liste des dépenses).
 app.put('/api/enveloppes', (req, res) => {
   const recues = req.body?.enveloppes;
-  const revenusSurs = req.body?.revenusSurs;
-  const montant = (v) => Number.isFinite(v) && v >= 0 && v <= 10000;
-  verifier(Array.isArray(recues) && montant(revenusSurs), 'Réglages invalides');
+  verifier(Array.isArray(recues), 'Réglages invalides');
   const depenses = CATEGORIES.filter((c) => !HORS_DEPENSES.includes(c));
   const vues = new Set();
   const nouvelles = reglages.enveloppes.map((e) => {
     const r = recues.find((x) => x?.id === e.id);
     verifier(r, `Enveloppe manquante : ${e.nom}`);
-    const cle = e.parSemaine !== undefined ? 'parSemaine' : 'parMois';
-    verifier(montant(r[cle]), `Montant invalide pour ${e.nom}`);
     verifier(Array.isArray(r.categories) && r.categories.every((c) => depenses.includes(c) && !vues.has(c) && vues.add(c)), `Catégories invalides pour ${e.nom}`);
-    const n = { ...e, [cle]: arrondi(r[cle]), categories: r.categories };
-    if (e.plafond) {
-      verifier(montant(r.plafond?.parMois), `Plafond invalide pour ${e.plafond.nom}`);
-      n.plafond = { ...e.plafond, parMois: arrondi(r.plafond.parMois) };
-    }
-    return n;
+    return { id: e.id, nom: e.nom, categories: r.categories }; // les anciens montants éventuels ne sont plus gardés
   });
   reglages.enveloppes = nouvelles;
-  reglages.revenusSurs = arrondi(revenusSurs);
   sauverReglages();
-  res.json({ enveloppes: nouvelles, revenusSurs: reglages.revenusSurs, budgetMensuel: enveloppes.budgetMensuel(nouvelles) });
+  res.json({ enveloppes: nouvelles });
 });
 
 // --- Tableau de bord et analyses -----------------------------------------------
 app.get('/api/tableau', (req, res) => {
   const mois = moisDemande(req.query.mois);
   const ops = comptees();
-  const abonnements = analyses.abonnements(ops).filter((a) => !reglages.pasAbonnements.some((p) => p.cle === a.cle));
   res.json({
     mois,
     moisDispo: derniersMois(),
@@ -710,7 +661,6 @@ app.get('/api/tableau', (req, res) => {
     reste: resteDuMois(mois),
     rembourses: operations.filter((o) => o.rembourse && o.montant < 0 && analyses.moisDe(o) === mois).length,
     top: analyses.topCommercants(ops, mois),
-    abonnements,
   });
 });
 

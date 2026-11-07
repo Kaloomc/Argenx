@@ -44,18 +44,18 @@ let tableau = null;
 const CHARGER = {
   accueil: () => chargerAccueil(),
   mois: () => chargerTableau(),
-  analyses: () => chargerTableau(),
   operations: () => chargerOperations(),
   importer: () => Promise.all([chargerEtat(), chargerBanque()]),
   reglages: () => chargerReglages(),
 };
 
 function afficherOnglet() {
-  const id = location.hash.slice(1) || 'accueil';
+  const demande = location.hash.slice(1);
+  const id = document.getElementById(demande)?.closest('main') ? demande : 'accueil'; // lien ancien (#analyses…) : retour à l'accueil
   document.querySelectorAll('main > section').forEach((s) => s.classList.toggle('active', s.id === id));
   document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('active', a.hash === '#' + id));
   document.querySelectorAll('nav a').forEach((a) => (a.hash === '#' + id ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
-  $('#barre-outils').hidden = !['mois', 'analyses', 'operations'].includes(id) || !mois;
+  $('#barre-outils').hidden = !['mois', 'operations'].includes(id) || !mois;
   $('#ajouter').hidden = !['accueil', 'operations'].includes(id);
   CHARGER[id]?.().then(() => statutErreur(false)).catch((err) => {
     console.error(err);
@@ -114,61 +114,13 @@ function htmlReste(r) {
   return l.join('');
 }
 
-// --- Accueil : enveloppes ------------------------------------------------------
-const memoire = {
-  lire: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-  ecrire: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
-};
-let vue = memoire.lire('argenx-vue') === 'mois' ? 'mois' : 'semaine';
-const ETAT_TEXTE = { vert: 'ça tient', orange: 'attention', rouge: 'dépassé' };
+// --- Accueil : reste à dépenser du mois -------------------------------------------
 const ETAT_ICONE = { orange: ico('alerte'), rouge: ico('stop') };
 const htmlAlerte = (x) => `<li class="${x.etat}">${ETAT_ICONE[x.etat]}<span>${esc(x.texte)}</span></li>`;
 
-document.querySelectorAll('.bascule button').forEach((b) => b.addEventListener('click', () => {
-  vue = b.dataset.vue;
-  memoire.ecrire('argenx-vue', vue);
-  chargerAccueil();
-}));
-
 async function chargerAccueil() {
-  document.querySelectorAll('.bascule button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vue === vue)));
-  afficherAccueil(await api(`/api/accueil?vue=${vue}`));
-}
-
-// La barre montre ce qui reste : pleine au début, vide quand l'enveloppe est épuisée.
-const barreReste = (reste, budget, fine) =>
-  `<div class="barre ${fine ? 'fine' : ''}" role="progressbar" aria-label="Reste" aria-valuemin="0" aria-valuemax="${Math.round(budget)}" aria-valuenow="${Math.round(Math.max(0, reste))}"><div style="width:${budget > 0 ? Math.max(0, Math.min(100, (reste / budget) * 100)) : 0}%"></div></div>`;
-
-function afficherAccueil(a) {
+  const a = await api('/api/accueil');
   $('#reste-mois').innerHTML = htmlReste(a.resteMois);
-  const periode = a.vue === 'mois' ? 'ce mois-ci' : 'cette semaine';
-  $('#resume-accueil').innerHTML = `
-    <small>Il te reste ${periode}</small>
-    <strong class="enorme ${a.reste < 0 ? 'rouge' : ''}">${euros(a.reste)}</strong>
-    <small>${a.joursRestants} jour${a.joursRestants > 1 ? 's' : ''} restant${a.joursRestants > 1 ? 's' : ''} · environ ${euros(a.parJour)} par jour</small>`;
-  $('#alertes').innerHTML = a.alertes.slice(0, 3).map(htmlAlerte).join('');
-  $('#liste-enveloppes').innerHTML = a.enveloppes.map((e) => `
-    <div class="carte enveloppe etat-${e.etat}">
-      <div class="haut"><span class="nom">${esc(e.nom)}${e.mensuelle && a.vue === 'semaine' ? ' <small>ce mois-ci</small>' : ''}</span>
-        <strong class="reste">${euros(e.reste)}</strong></div>
-      ${barreReste(e.reste, e.budget)}
-      <div class="bas"><span>${euros(e.depense)} dépensés sur ${euros(e.budget)}</span><span>${ETAT_TEXTE[e.etat]}</span></div>
-      ${e.plafond ? `
-        <div class="plafond etat-${e.plafond.etat}">
-          <div class="haut"><span>dont ${esc(e.plafond.nom)} <small>ce mois-ci</small></span><strong class="reste">${euros(e.plafond.reste)}</strong></div>
-          ${barreReste(e.plafond.reste, e.plafond.budget, true)}
-          <div class="bas"><span>${euros(e.plafond.depense)} sur ${euros(e.plafond.budget)}</span><span>${ETAT_TEXTE[e.plafond.etat]}</span></div>
-        </div>` : ''}
-    </div>`).join('');
-  const r = a.revenus;
-  $('#revenus-mois').innerHTML = `
-    <h3>Ce mois-ci</h3>
-    <div class="chiffres">
-      <div><small>Revenus sûrs reçus</small><strong>${euros(r.surs)}</strong><small>sur ${euros(r.attendus)} attendus</small></div>
-      <div><small>Entrées variables</small><strong>${euros(r.variables)}</strong><small>pas dans le budget</small></div>
-      <div><small>À récupérer</small><strong class="${r.aRecuperer ? 'orange' : ''}">${euros(r.aRecuperer)}</strong><small>${r.avances} avance${r.avances > 1 ? 's' : ''}</small></div>
-    </div>
-    ${r.sourcesConfigurees ? '' : '<p class="aide">Pour reconnaître tes revenus sûrs : dans Dépenses, appuie sur un virement de tes parents → « Revenu sûr ».</p>'}`;
   const hier = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
   $('#fraicheur').textContent = a.jusquau < hier
     ? `Dépenses connues jusqu'au ${jourCourt(a.jusquau)}. Importe ton relevé Revolut (onglet Importer) pour être à jour.`
@@ -182,9 +134,8 @@ async function chargerTableau() {
   const choix = $('#choix-mois');
   const liste = tableau.moisDispo.includes(mois) ? tableau.moisDispo : [mois, ...tableau.moisDispo];
   choix.innerHTML = liste.map((m) => `<option value="${m}" ${m === mois ? 'selected' : ''}>${nomMois(m)}</option>`).join('');
-  $('#barre-outils').hidden = !['mois', 'analyses', 'operations'].includes(location.hash.slice(1) || 'accueil');
+  $('#barre-outils').hidden = !['mois', 'operations'].includes(location.hash.slice(1) || 'accueil');
   dessiner();
-  afficherAnalyses();
   afficherCoursesRepax(tableau.mois);
 }
 
@@ -220,7 +171,7 @@ function dessiner() {
     <div><small>Entrées</small><strong>${euros(t.entrees)}</strong></div>
     <div><small>Dépenses</small><strong>${euros(t.sorties)}</strong></div>
     <div><small>Mis de côté</small><strong>${euros(t.epargne)}</strong></div>`;
-  afficherBudget();
+  afficherNotes();
 
   if (!window.Chart) {
     $('#liste-categories').innerHTML = '<li class="vide">Graphiques indisponibles sans connexion Internet.</li>';
@@ -250,62 +201,23 @@ function dessiner() {
     ? depenses.map((c) => `<li><span class="pastille" style="background:${couleur(c.categorie)}"></span><span class="nom">${esc(c.categorie)} <small>${c.nb} op.</small></span><span class="cout">${euros(c.montant)}${c.budget ? `<small> / ${euros0(c.budget)}${c.montant > c.budget ? ` · +${euros0(c.montant - c.budget)} au-dessus` : ''}</small>` : ''}</span>${c.budget ? barre(c.montant, c.budget) : ''}</li>`).join('')
     : '<li class="vide">Aucune dépense ce mois-ci.</li>';
 
-  const barres = { borderRadius: 4, maxBarThickness: 28, borderSkipped: false };
-  graphe('g-entrees', {
-    type: 'bar',
-    data: { labels: ['Entrées', 'Dépenses'], datasets: [{ data: [t.entrees, t.sorties], backgroundColor: [css('--serie-1'), css('--serie-2')], ...barres }] },
-    options: {
-      indexAxis: 'y', maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: infobulle },
-      scales: { x: { beginAtZero: true, ticks: { callback: (v) => euros(v).replace(',00', '') } }, y: { grid: { display: false } } },
-    },
-  });
-
   $('#top').innerHTML = t.top.length
     ? t.top.map((c) => `<li><span class="nom">${esc(c.nom)} <small>${esc(c.categorie)} · ${c.nb} fois</small></span><span class="cout">${euros(c.montant)}</span></li>`).join('')
     : '<li class="vide">Rien ce mois-ci.</li>';
 }
-// Carte « Reste à dépenser » d'Insights : le même calcul que l'accueil, pour le mois choisi.
-function afficherBudget() {
+// Notes sous le titre d'Insights : données pas à jour, achats remboursés retirés des totaux.
+function afficherNotes() {
   const r = tableau.reste;
-  const lignes = [htmlReste(r)];
+  const notes = [];
   if (r.enCours && (Date.now() - Date.parse(r.jusquau + 'T23:59:59')) / 864e5 > 3) {
-    lignes.push(`<p class="aide">Opérations connues jusqu'au ${jourCourt(r.jusquau)} : importe un relevé récent pour être à jour.</p>`);
+    notes.push(`Opérations connues jusqu'au ${jourCourt(r.jusquau)} : importe un relevé récent pour être à jour.`);
   }
-  if (tableau.rembourses) lignes.push(`<p class="aide">${ico('echange')} ${tableau.rembourses} achat(s) remboursé(s) ce mois-ci, retirés des totaux.</p>`);
-  $('#budget-mois').innerHTML = lignes.join('');
+  if (tableau.rembourses) notes.push(`${ico('echange')} ${tableau.rembourses} achat(s) remboursé(s) ce mois-ci, retirés des totaux.`);
+  $('#note-mois').innerHTML = notes.join('<br>');
+  $('#note-mois').hidden = !notes.length;
 }
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => tableau && dessiner());
-
-// --- Analyses ----------------------------------------------------------------
-function afficherAnalyses() {
-  const t = tableau;
-  const avecBudget = t.categories.filter((c) => c.budget);
-  $('#budgets').innerHTML = avecBudget.length
-    ? `<ul class="liste">${avecBudget.map((c) => `
-        <li><span class="nom">${esc(c.categorie)}</span>
-          <span class="cout ${c.montant > c.budget ? 'rouge' : ''}">${euros(c.montant)} <small>/ ${euros(c.budget)}</small></span>
-          ${barre(c.montant, c.budget)}</li>`).join('')}</ul>`
-    : '<p class="vide">Aucun budget pour l’instant : fixe-les dans Réglages.</p>';
-
-  const actifs = t.abonnements.filter((a) => a.actif);
-  $('#abonnements').innerHTML = t.abonnements.length
-    ? `<p><strong>${euros(actifs.reduce((s, a) => s + a.coutAnnuel, 0))}</strong> par an pour ${actifs.length} abonnement(s) en cours.</p>
-       <ul class="liste">${t.abonnements.map((a) => `
-        <li ${a.actif ? '' : 'class="vide"'}><span class="nom">${esc(a.nom)}
-          <small>${a.fois} paiements · dernier le ${jourCourt(a.dernier)}${a.actif ? '' : ' · plus vu depuis'}</small></span>
-          <span class="cout">${euros(a.montant)}<small>/mois · ${euros(a.coutAnnuel)}/an</small></span>
-          <button class="petit secondaire" style="width:auto" data-pas-abonnement="${esc(a.cle)}" data-nom="${esc(a.nom)}">Pas un abonnement</button></li>`).join('')}</ul>`
-    : '<p class="vide">Aucun abonnement repéré (il faut au moins 2 paiements à environ un mois d’écart).</p>';
-}
-
-$('#abonnements').addEventListener('click', async (e) => {
-  const { pasAbonnement: cle, nom } = e.target.dataset;
-  if (!cle) return;
-  await api('/api/pas-abonnements', { method: 'POST', body: { cle, nom } }).catch((err) => alert(err.message));
-  chargerTableau();
-});
 
 // --- Dépenses : par jour, puis par enveloppe ------------------------------------
 let operations = [];
@@ -664,19 +576,10 @@ $('#effacer-exemple').addEventListener('click', async () => {
 });
 
 // --- Réglages ----------------------------------------------------------------
-// Réglages des enveloppes : montants, plafond, revenus sûrs, et quelle catégorie va où.
+// Réglages des enveloppes : quelle catégorie va dans quelle enveloppe (groupes de la liste des dépenses).
 let enveloppesReglees = [];
 function afficherReglagesEnveloppes(r) {
   enveloppesReglees = r.enveloppes;
-  $('#champs-enveloppes').innerHTML = r.enveloppes.map((e) => {
-    const cle = e.parSemaine !== undefined ? 'parSemaine' : 'parMois';
-    return `<label>${esc(e.nom)} <small>€/${cle === 'parSemaine' ? 'semaine' : 'mois'}</small>
-        <input data-enveloppe="${esc(e.id)}" data-cle="${cle}" type="number" min="0" max="10000" step="1" inputmode="decimal" value="${e[cle]}" required>
-      </label>${e.plafond ? `<label>${esc(e.plafond.nom)} <small>€/mois, compté dans ${esc(e.nom)}</small>
-        <input data-plafond="${esc(e.id)}" type="number" min="0" max="10000" step="1" inputmode="decimal" value="${e.plafond.parMois}" required>
-      </label>` : ''}`;
-  }).join('');
-  $('#revenus-surs').value = r.revenusSurs;
   $('#carte-categories').innerHTML = etat.depenses.filter((c) => c !== 'Ne compte pas').map((c) => `
     <label>${esc(c)}
       <select data-categorie="${esc(c)}">
@@ -684,36 +587,15 @@ function afficherReglagesEnveloppes(r) {
         <option value="" ${r.enveloppes.some((e) => e.categories.includes(c)) ? '' : 'selected'}>Aucune enveloppe</option>
       </select>
     </label>`).join('');
-  bilanEnveloppes();
 }
-
-// Budget prévu sur un mois moyen comparé aux revenus sûrs.
-function bilanEnveloppes() {
-  const total = [...document.querySelectorAll('#champs-enveloppes [data-enveloppe]')]
-    .reduce((s, i) => s + (Number(i.value) || 0) * (i.dataset.cle === 'parSemaine' ? 52 / 12 : 1), 0);
-  const revenus = Number($('#revenus-surs').value) || 0;
-  const ecart = revenus - total;
-  $('#bilan-enveloppes').innerHTML = `Budget prévu : <strong>${euros(total)}</strong> par mois pour ${euros(revenus)} de revenus sûrs →
-    ${ecart >= 0 ? `<span class="vert">${euros(ecart)} de marge</span>` : `<span class="rouge">il manque ${euros(-ecart)} par mois</span>`}.`;
-}
-$('#form-enveloppes').addEventListener('input', bilanEnveloppes);
 
 $('#form-enveloppes').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
   const choix = [...f.querySelectorAll('[data-categorie]')];
-  const enveloppes = enveloppesReglees.map((x) => {
-    const champ = f.querySelector(`[data-enveloppe="${x.id}"]`);
-    const plafond = f.querySelector(`[data-plafond="${x.id}"]`);
-    return {
-      id: x.id,
-      [champ.dataset.cle]: Number(champ.value),
-      categories: choix.filter((s) => s.value === x.id).map((s) => s.dataset.categorie),
-      ...(plafond && { plafond: { parMois: Number(plafond.value) } }),
-    };
-  });
+  const enveloppes = enveloppesReglees.map((x) => ({ id: x.id, categories: choix.filter((s) => s.value === x.id).map((s) => s.dataset.categorie) }));
   try {
-    const r = await api('/api/enveloppes', { method: 'PUT', body: { enveloppes, revenusSurs: Number($('#revenus-surs').value) } });
+    const r = await api('/api/enveloppes', { method: 'PUT', body: { enveloppes } });
     enveloppesReglees = r.enveloppes;
     dire(f, 'Enveloppes enregistrées.');
   } catch (err) {
@@ -779,10 +661,6 @@ async function chargerReglages() {
     ? r.regles.map((g) => `<li><span class="nom">« ${esc(g.motCle)} » → ${esc(g.categorie)}</span>
         <button class="petit secondaire" style="width:auto" data-supprimer="${esc(g.motCle)}">Supprimer</button></li>`).join('')
     : '<li class="vide">Aucune règle. Corrige une opération dans Dépenses pour en créer une.</li>';
-  $('#liste-pas-abonnements').innerHTML = r.pasAbonnements.length
-    ? r.pasAbonnements.map((p) => `<li><span class="nom">${esc(p.nom)}</span>
-        <button class="petit secondaire" style="width:auto" data-remettre="${esc(p.cle)}">Remettre</button></li>`).join('')
-    : '<li class="vide">Aucun. Dans Analyses, « Pas un abonnement » retire un commerçant de la liste.</li>';
   afficherNotion();
 }
 
@@ -803,13 +681,6 @@ $('#liste-sources').addEventListener('click', async (e) => {
   const motCle = e.target.dataset.retirerSource;
   if (!motCle) return;
   await api(`/api/sources-revenus?motCle=${encodeURIComponent(motCle)}`, { method: 'DELETE' }).catch((err) => alert(err.message));
-  chargerReglages();
-});
-
-$('#liste-pas-abonnements').addEventListener('click', async (e) => {
-  const cle = e.target.dataset.remettre;
-  if (!cle) return;
-  await api(`/api/pas-abonnements?cle=${encodeURIComponent(cle)}`, { method: 'DELETE' }).catch((err) => alert(err.message));
   chargerReglages();
 });
 

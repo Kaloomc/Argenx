@@ -112,7 +112,7 @@ button.secondaire { background: transparent; color: var(--rouge); border: 1px so
 .chiffres > div { display: grid; }
 .chiffres strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
 .chiffres small { font-size: .75rem; }
-#budget-mois p, #courses-repax p { margin: 0; }
+#courses-repax p { margin: 0; }
 .ligne-budget { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
 .ligne-budget > div { display: grid; }
 .gros { font-size: 2rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
@@ -152,10 +152,7 @@ nav a .ico { width: 24px; height: 24px; }
 nav a span { font-size: .75rem; }
 nav a.active { color: var(--accent); font-weight: 600; }
 
-/* --- Accueil : enveloppes --- */
-.bascule { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 16px; background: var(--carte); border: 1px solid var(--bord); border-radius: 12px; }
-.bascule button { background: transparent; color: var(--doux); }
-.bascule button[aria-pressed="true"] { background: var(--accent); color: var(--sur-accent); }
+/* --- Accueil --- */
 .resume { display: grid; justify-items: center; text-align: center; gap: 2px; margin: 4px 0 16px; }
 .enorme { font-size: 3.2rem; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; }
 .alertes { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
@@ -164,21 +161,6 @@ nav a.active { color: var(--accent); font-weight: 600; }
 .alertes li .ico { margin-top: 2px; }
 .alertes li.rouge .ico { color: var(--rouge); }
 .alertes li.orange .ico { color: var(--orange); }
-.enveloppe { gap: 8px; }
-.enveloppe .haut { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.enveloppe .nom { font-weight: 600; }
-.enveloppe .reste { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
-.enveloppe .bas { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--doux); }
-.etat-vert .barre div { background: var(--vert); }
-.etat-orange .barre div { background: var(--orange); }
-.etat-rouge .barre div { background: var(--rouge); }
-.etat-vert .reste { color: var(--vert); }
-.etat-orange .reste { color: var(--orange); }
-.etat-rouge .reste { color: var(--rouge); }
-.plafond { border-top: 1px solid var(--bord); padding-top: 8px; display: grid; gap: 6px; }
-.plafond .haut .reste { font-size: 1.1rem; }
-.barre.fine { height: 6px; }
-a.bouton.secondaire-lien { background: transparent; color: var(--accent); border: 1px solid var(--bord); margin-top: 4px; }
 details summary { cursor: pointer; color: var(--accent); min-height: 44px; display: flex; align-items: center; }
 details[open] summary { margin-bottom: 8px; }
 
@@ -219,8 +201,6 @@ button.secondaire-neutre { background: transparent; color: var(--texte); border:
 #liste-a-rembourser .choix small { display: block; }
 .badge-op.vert { border-color: var(--vert); color: var(--vert); }
 strong.orange { color: var(--orange); }
-#revenus-mois h3 { margin: 0; }
-#revenus-mois .chiffres > div { text-align: center; }
 .cout small { display: block; text-align: right; font-weight: 400; font-size: .75rem; }
 .reste .resume { margin-bottom: 8px; }
 .reste p { margin: 8px 0 0; }

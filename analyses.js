@@ -5,7 +5,6 @@ const { CATEGORIES, HORS_DEPENSES, enseigne } = require('./categories');
 const moisDe = (op) => op.date.slice(0, 7);
 const estDepense = (op) => !HORS_DEPENSES.includes(op.categorie);
 const jours = (a, b) => (Date.parse(b.slice(0, 10)) - Date.parse(a.slice(0, 10))) / 864e5;
-const ajouterJours = (iso, n) => new Date(Date.parse(iso.slice(0, 10)) + n * 864e5).toISOString().slice(0, 10);
 
 // Totaux d'un mois par catégorie. Montant positif : dépensé (net des remboursements),
 // mis de côté pour l'Épargne, reçu pour les Revenus.
@@ -46,51 +45,6 @@ function topCommercants(ops, mois, n = 10) {
     .sort((a, b) => b.montant - a.montant)
     .slice(0, n)
     .map((c) => ({ ...c, montant: arrondi(c.montant) }));
-}
-
-// Abonnements : même commerçant, montant à ±10 %, tous les 25 à 35 jours, au moins 2 fois.
-function abonnements(ops) {
-  const groupes = new Map();
-  for (const o of ops) {
-    if (o.montant >= 0 || !estDepense(o) || o.categorie === 'Retraits') continue;
-    const k = normaliser(o.description);
-    groupes.set(k, [...(groupes.get(k) || []), o]);
-  }
-  const derniere = ops.reduce((m, o) => (o.date > m ? o.date : m), '');
-  const res = [];
-  for (const liste of groupes.values()) {
-    liste.sort((a, b) => a.date.localeCompare(b.date));
-    // Plus longue suite de paiements réguliers. ponytail: O(n²) par commerçant, suffisant pour quelques milliers d'opérations
-    let suite = [];
-    for (let i = 0; i < liste.length; i++) {
-      const s = [liste[i]];
-      for (let j = i + 1; j < liste.length; j++) {
-        const ecart = jours(s.at(-1).date, liste[j].date);
-        if (ecart > 35) break;
-        if (ecart >= 25 && Math.abs(liste[j].montant - s.at(-1).montant) <= 0.1 * Math.abs(s.at(-1).montant)) s.push(liste[j]);
-      }
-      if (s.length > suite.length) suite = s;
-    }
-    if (suite.length < 2) continue;
-    // Un commerçant où l'on va souvent (supermarché…) tombe parfois sur deux montants proches à un mois d'écart :
-    // on écarte le cas où la suite régulière noie dans beaucoup d'autres achats au même endroit.
-    const pendant = liste.filter((o) => o.date >= suite[0].date && o.date <= suite.at(-1).date).length;
-    if (pendant > suite.length * 1.5) continue;
-    const dernier = suite.at(-1);
-    const intervalle = Math.round(jours(suite[0].date, dernier.date) / (suite.length - 1));
-    res.push({
-      cle: normaliser(dernier.description),
-      nom: dernier.description,
-      categorie: dernier.categorie,
-      montant: -dernier.montant,
-      fois: suite.length,
-      dernier: dernier.date.slice(0, 10),
-      prochain: ajouterJours(dernier.date, intervalle),
-      coutAnnuel: arrondi(-dernier.montant * 12),
-      actif: jours(dernier.date, derniere) <= 40,
-    });
-  }
-  return res.sort((a, b) => b.actif - a.actif || b.coutAnnuel - a.coutAnnuel);
 }
 
 // Achats remboursés : une somme reçue (remboursement du commerçant, virement d'un proche…) égale, au centime près,
@@ -198,6 +152,6 @@ function previsionRepax(courses, planning, jour) {
 }
 
 module.exports = {
-  moisDe, resumeMois, topCommercants, abonnements, remboursements, rythme, epargneAReconstituer, phrases,
+  moisDe, resumeMois, topCommercants, remboursements, rythme, epargneAReconstituer, phrases,
   coursesDuMois, previsionRepax, nettes,
 };

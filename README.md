@@ -3,13 +3,10 @@
 Appli web pour téléphone (PWA installable) qui range tes dépenses à partir des **relevés CSV de Revolut** :
 
 1. **reste à dépenser du mois** (haut de l'accueil) : enveloppe du mois (400 €) − épargne à remettre (117 € en novembre 2026) − dépenses du mois, avec le montant par jour et le suivi « Épargne à reconstituer ». Calculé sur le mois en cours seulement, jamais sur les mois précédents ;
-1. **enveloppes de la semaine** (écran d'accueil) : il te reste combien cette semaine en courses, resto, achats libres, avec un plafond Uber Eats et les fixes du mois ;
-1. **budget du mois** (onglet Insights, 400 € par défaut) : ce qu'il reste, combien ça fait par jour, où tu finiras le mois à ce rythme, abonnements encore à payer ;
 2. **achats remboursés repérés tout seuls** (meuble remboursé par le magasin, billet remboursé par un proche) : ils ne comptent pas ;
 3. **import** du relevé (export en anglais ou en français), sans doublons même si les périodes se chevauchent ;
 4. **classement automatique** par règles (Courses, Transport, Abonnements…), que tu corriges en un geste ;
 5. **tableau de bord du mois** : dépenses par catégorie (avec le budget en repère), entrées et dépenses, top 10 des commerçants (Utile, Super U… regroupés) ;
-6. **analyses** : abonnements repérés et leur coût annuel, budget par catégorie ;
 7. **résumé mensuel dans Notion** (totaux par catégorie) et **courses payées** (détail de la seule catégorie Courses, pour Repax) ;
 8. **courses prévues par Repax**, lues dans la même page Notion.
 
@@ -87,24 +84,19 @@ Dans l'ordre :
 Un remboursement garde la catégorie du commerçant et vient en déduction de ses dépenses.
 Quand tu changes la catégorie d'une opération (onglet Opérations), l'appli propose d'en faire une **règle** qui reclasse les opérations passées et futures (sauf celles que tu as corrigées à la main).
 
-## Les enveloppes (écran d'accueil)
+## Les enveloppes (regroupement des dépenses)
 
-L'accueil répond à « il me reste combien cette semaine ? ». Chaque enveloppe regroupe des catégories :
+Une enveloppe regroupe des catégories, sans montant : la liste **Dépenses** range chaque jour par enveloppe (avec le total du groupe), et l'accueil montre le **reste à dépenser du mois**.
 
-| Enveloppe | Par défaut | Catégories |
-|---|---|---|
-| Courses | 42 €/semaine | Courses |
-| Resto & fast-food | 50 €/semaine, **dont Uber Eats 26 €/mois** (Uber Eats, Deliveroo, Just Eat) | Restos & fast-food |
-| Achats libres | 9 €/semaine | Shopping, Loisirs, Transport, Santé, Études, Logement, Retraits, Proches, Autres |
-| Abonnements | 22 €/mois (Claude) | Abonnements |
+| Enveloppe | Catégories |
+|---|---|
+| Courses | Courses |
+| Resto & fast-food | Restos & fast-food |
+| Achats libres | Shopping, Loisirs, Transport, Santé, Études, Logement, Retraits, Proches, Autres |
+| Abonnements | Abonnements |
 
-Total ≈ 460 €/mois (alimentation ≈ 400 € + achats libres 60 € dont l'abonnement), pour 460 € de revenus sûrs (parents 400 €, mère 60 €).
 Basic-Fit est remboursé par le virement « salle » : une règle le met en **Ne compte pas** (supprimable dans Réglages → Mes règles).
-
-- La semaine va du lundi au dimanche. La bascule **Semaine / Mois** montre les mêmes enveloppes sur le mois (42 €/semaine → 180 € en novembre).
-- Le grand chiffre = ce qui reste dans les enveloppes de la semaine (les abonnements, au mois, n'y entrent pas).
-- Trois couleurs seulement : **vert** ça tient ; **orange** 80 % utilisés, ou nettement plus vite que le temps (par exemple 60 % dépensés alors que 30 % de la semaine est passée) ; **rouge** dépassé.
-- Tout se règle dans Réglages : montants, plafond Uber Eats, revenus sûrs (460 € par défaut) et quelle catégorie va dans quelle enveloppe. L'appli affiche si le budget prévu dépasse les revenus sûrs.
+Dans Réglages, tu choisis aussi quelle catégorie va dans quelle enveloppe.
 
 ## Ajouter une dépense et la liste des dépenses
 
@@ -119,12 +111,12 @@ Basic-Fit est remboursé par le virement « salle » : une règle le met en **Ne
 
 - **Avance pour quelqu'un** : glisse la dépense à droite (« à rembourser », la dépense entière). Un appui permet de changer la part à récupérer (par exemple 20 € sur un resto à 40 €).
 - **Le virement arrive** : glisse-le à droite (« c'est un remboursement ») et choisis la dépense. Seul ce qui manque est rapproché ; le surplus reste une entrée variable. Plusieurs virements peuvent rembourser une même dépense.
-- Partout (enveloppes, Insights, Notion), on compte la **dépense nette** : 40 € avancés − 20 € rendus = 20 €. Le virement de remboursement ne compte **pas** comme une entrée.
+- Partout (reste à dépenser, Insights, Notion), on compte la **dépense nette** : 40 € avancés − 20 € rendus = 20 €. Le virement de remboursement ne compte **pas** comme une entrée.
 - Un remboursement exact (même montant, à moins de 30 jours) s'annule toujours tout seul, sans rien faire.
-- **Revenus sûrs** : appuie sur un virement de tes parents → « Revenu sûr (toujours) » (mot-clé = l'expéditeur). La liste se gère dans Réglages → Revenus sûrs. Tout autre argent reçu est une **entrée variable**, jamais comptée comme acquise : le budget repose sur les revenus sûrs réglés (460 €).
-- L'accueil montre, pour le mois : revenus sûrs reçus / attendus, entrées variables, et ce qu'il reste **à récupérer** sur tes avances.
+- **Revenus sûrs** : appuie sur un virement de tes parents → « Revenu sûr (toujours) » (mot-clé = l'expéditeur). La liste se gère dans Réglages → Revenus sûrs. Tout autre argent reçu est une **entrée variable**, jamais comptée comme acquise (simple repère, sans effet sur les chiffres).
+- Dans Dépenses, chaque ligne porte son badge : « à rembourser », « revenu sûr », « entrée variable ».
 
-## Le reste à dépenser du mois (accueil et onglet Insights)
+## Le reste à dépenser du mois (accueil)
 
 Fixe dans Réglages l'**enveloppe du mois** (400 € par défaut) et, si besoin, l'**épargne à reconstituer** (montant et mois). Les revenus et l'épargne ne comptent jamais comme des dépenses.
 
@@ -157,7 +149,6 @@ La réponse (dates `AAAA-MM-JJ`, fuseau de Paris, `updatedAt` en ISO 8601 ; `nul
 ## Corriger à la main
 
 - **Ne compte pas** : catégorie à choisir dans Opérations pour une opération qui ne doit apparaître nulle part (virement entre tes propres comptes, avance pour quelqu'un…). Elle est barrée et sortie du budget, des graphiques et des analyses. Comme pour les autres catégories, l'appli propose d'en faire une règle.
-- **Pas un abonnement** : bouton sous chaque abonnement repéré, dans Analyses. Le commerçant ne sera plus proposé ; tu peux le remettre dans Réglages.
 
 ## Les remboursements
 
@@ -165,10 +156,9 @@ Une somme reçue **égale au centime près** à un achat des **30 jours d'avant*
 Erreur ? Bouton **« Pas un remboursement »** sous l'opération.
 Remboursé **en partie** (par exemple un ami qui te rend sa moitié) : mets la somme reçue dans la même catégorie que l'achat, elle vient en déduction.
 
-## Les analyses
+## Budgets par catégorie
 
-- **Abonnements** : même commerçant, montant à ±10 %, tous les 25 à 35 jours, au moins 2 fois. Coût annuel = dernier montant × 12. Un supermarché où tu vas souvent n'est pas compté.
-- **Budgets** : à fixer par catégorie dans Réglages ; la barre passe au rouge en cas de dépassement.
+À fixer dans Réglages (le bouton « Remplir avec la proposition » donne un point de départ de 283 €). Dans Insights, la liste des catégories montre le budget en repère, et la barre passe au rouge en cas de dépassement.
 
 ## Limites connues
 

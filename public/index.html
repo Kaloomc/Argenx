@@ -67,20 +67,12 @@
     <section id="accueil">
       <p id="bandeau-exemple" class="carte bandeau" hidden>Ce sont des <strong>opérations d'exemple fictives</strong>. Elles disparaissent dès ton premier import (onglet Importer).</p>
       <div id="reste-mois" class="carte reste" aria-live="polite"><p class="vide">Chargement…</p></div>
-      <div class="bascule" role="group" aria-label="Période">
-        <button type="button" data-vue="semaine">Semaine</button>
-        <button type="button" data-vue="mois">Mois</button>
-      </div>
-      <div id="resume-accueil" class="resume"></div>
-      <ul id="alertes" class="alertes"></ul>
-      <div id="liste-enveloppes"></div>
-      <div id="revenus-mois" class="carte"></div>
       <p id="fraicheur" class="aide"></p>
     </section>
 
     <section id="mois">
       <h2>Insights</h2>
-      <div id="budget-mois" class="carte"><p class="vide">Chargement…</p></div>
+      <p id="note-mois" class="aide" hidden></p>
       <div id="courses-repax" class="carte" hidden></div>
       <div id="chiffres" class="carte chiffres"></div>
       <div class="carte">
@@ -89,23 +81,9 @@
         <ul id="liste-categories" class="liste"></ul>
       </div>
       <div class="carte">
-        <h3>Entrées et sorties du mois</h3>
-        <div class="graphe bas"><canvas id="g-entrees" role="img" aria-label="Entrées comparées aux sorties"></canvas></div>
-      </div>
-      <div class="carte">
         <h3>Top 10 des commerçants</h3>
         <ol id="top" class="liste"></ol>
       </div>
-      <a class="bouton secondaire-lien" href="#analyses"><svg class="ico" aria-hidden="true"><use href="#i-loupe"/></svg> Analyses détaillées (budgets, abonnements)</a>
-    </section>
-
-    <section id="analyses">
-      <h2>Analyses</h2>
-      <h3>Budgets du mois</h3>
-      <div id="budgets" class="carte"></div>
-      <h3>Abonnements repérés</h3>
-      <div id="abonnements" class="carte"></div>
-      <p class="aide">Ces chiffres décrivent tes dépenses ; ce ne sont pas des conseils financiers.</p>
     </section>
 
     <section id="operations">
@@ -145,17 +123,9 @@
       <h2>Réglages</h2>
       <h3>Enveloppes</h3>
       <form id="form-enveloppes" class="carte">
-        <div id="champs-enveloppes" class="deux"></div>
-        <label>Revenus sûrs par mois (€)
-          <input id="revenus-surs" type="number" min="0" max="10000" step="1" inputmode="decimal">
-        </label>
-        <p class="aide">Seulement ce qui arrive à coup sûr (virement des parents, salle…). Les remboursements et le variable n'y vont pas.</p>
-        <p id="bilan-enveloppes"></p>
-        <details>
-          <summary>Quelle catégorie va dans quelle enveloppe</summary>
-          <div id="carte-categories" class="deux"></div>
-        </details>
-        <button type="submit">Enregistrer les enveloppes</button>
+        <p class="aide">La liste des dépenses range chaque jour par enveloppe. Choisis dans quelle enveloppe va chaque catégorie.</p>
+        <div id="carte-categories" class="deux"></div>
+        <button type="submit">Enregistrer</button>
         <p class="message" role="status"></p>
       </form>
       <h3>Épargne à reconstituer</h3>
@@ -189,8 +159,6 @@
       <ul id="liste-sources" class="liste"></ul>
       <h3>Mes règles de classement</h3>
       <ul id="liste-regles" class="liste"></ul>
-      <h3>Pas des abonnements</h3>
-      <ul id="liste-pas-abonnements" class="liste"></ul>
       <h3>Notion</h3>
       <div class="carte">
         <p class="aide" id="aide-notion"></p>

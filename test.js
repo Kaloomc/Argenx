@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { lireRevolut, fusionner, cle } = require('./csv');
 const { classer } = require('./categories');
-const { resumeMois, abonnements, remboursements, rythme, epargneAReconstituer, phrases, topCommercants } = require('./analyses');
+const { resumeMois, remboursements, rythme, epargneAReconstituer, phrases, topCommercants } = require('./analyses');
 const operationsDemo = require('./demo');
 
 const CSV_EN = [
@@ -91,23 +91,6 @@ test('l’épargne ne compte pas comme une dépense', () => {
   assert.strictEqual(r.entrees, 200);
 });
 
-test('détection des abonnements', () => {
-  const op = (date, description, montant, categorie = 'Abonnements') => ({ date: date + ' 10:00:00', description, montant, categorie });
-  const ops = [
-    op('2026-01-08', 'Netflix.com', -13.49), op('2026-02-08', 'Netflix.com', -13.49), op('2026-03-09', 'Netflix.com', -13.99),
-    op('2026-01-15', 'Salle de sport', -30), op('2026-03-15', 'Salle de sport', -30), // 2 mois d'écart : non
-    op('2026-01-20', 'Appli X', -5), op('2026-02-20', 'Appli X', -9), // montant trop différent : non
-    op('2026-01-25', 'To EUR Savings', -100, 'Épargne'), op('2026-02-25', 'To EUR Savings', -100, 'Épargne'), // épargne : non
-  ];
-  // Supermarché toutes les semaines : deux montants proches à un mois d'écart ne font pas un abonnement.
-  for (let i = 0; i < 12; i++) ops.push(op(`2026-0${1 + Math.floor(i / 4)}-${String(3 + (i % 4) * 7).padStart(2, '0')}`, 'Lidl', -(20 + (i % 3) * 0.5), 'Courses'));
-  const a = abonnements(ops);
-  assert.deepStrictEqual(a.map((x) => x.nom), ['Netflix.com']);
-  assert.strictEqual(a[0].fois, 3);
-  assert.strictEqual(a[0].coutAnnuel, 167.88);
-  assert.strictEqual(a[0].actif, true);
-});
-
 test('achats remboursés : ils s’annulent', () => {
   const op = (id, date, description, montant, type = 'card') => ({ id, date: date + ' 10:00:00', description, montant, type, categorie: classer({ description, montant, type }) });
   const ops = [
@@ -176,13 +159,11 @@ test('enseignes : Utile, Super U… regroupés dans le top des commerçants', ()
   assert.deepStrictEqual(top.map((c) => [c.nom, c.montant, c.nb]), [['Super U', 55, 3]]);
 });
 
-test('données de démo : abonnements et remboursements repérés', () => {
+test('données de démo : remboursements repérés', () => {
   const ops = operationsDemo(new Date(2026, 10, 3)).map((o) => ({ ...o, categorie: classer(o) }));
-  const noms = abonnements(ops).map((x) => x.nom);
-  for (const n of ['Netflix.com', 'Spotify', 'Free Mobile']) assert.ok(noms.includes(n), n);
-  assert.ok(!noms.some((n) => ['Lidl', 'Cash at Distributeur', 'Payment from Papa'].includes(n)), noms.join(', '));
   assert.strictEqual(remboursements(ops).size, 4);
 });
+
 
 test('« Ne compte pas » : jamais dans les dépenses ni les entrées, jamais pris pour un remboursement', () => {
   const op = (id, date, description, montant, categorie) => ({ id, date: date + ' 10:00:00', description, montant, categorie, type: 'transfer' });
@@ -265,59 +246,17 @@ test('mots-clés : « Dr Martens » n’est pas une dépense de santé', () => {
   assert.strictEqual(classer({ description: 'Pharmacie du Centre', montant: -8, type: 'card' }), 'Santé');
 });
 
-test('enveloppes : reste de la semaine, plafond Uber Eats, états et alertes', () => {
-  const { ENVELOPPES_DEFAUT, periode, calculer, budgetMensuel } = require('./enveloppes');
+test('enveloppes : semaine du lundi au dimanche, mois civil, groupes par défaut', () => {
+  const { ENVELOPPES_DEFAUT, periode } = require('./enveloppes');
   assert.deepStrictEqual(periode('2026-11-04', 'semaine'), { debut: '2026-11-02', fin: '2026-11-08' }); // mercredi → lundi..dimanche
   assert.deepStrictEqual(periode('2026-11-02', 'semaine'), { debut: '2026-11-02', fin: '2026-11-08' });
   assert.deepStrictEqual(periode('2026-11-08', 'semaine'), { debut: '2026-11-02', fin: '2026-11-08' });
   assert.deepStrictEqual(periode('2026-11-04', 'mois'), { debut: '2026-11-01', fin: '2026-11-30' });
-
-  const op = (date, description, montant, categorie) => ({ date: date + ' 12:00:00', description, montant, categorie });
-  const ops = [
-    op('2026-11-01', 'Uber Eats', -24, 'Restos & fast-food'), // dimanche : semaine d'avant, mais même mois
-    op('2026-11-02', 'Auchan', -20, 'Courses'),
-    op('2026-11-03', 'Auchan', -15, 'Courses'),
-    op('2026-11-03', 'KFC', -12, 'Restos & fast-food'),
-    op('2026-11-03', 'Remboursement Auchan', 5, 'Courses'), // vient en déduction
-    op('2026-11-04', 'Zara', -20, 'Shopping'),
-    op('2026-11-04', 'Free Mobile', -10, 'Abonnements'),
-    op('2026-11-04', 'Payment from Papa', 400, 'Revenus'), // jamais dans une enveloppe
-  ];
-  const s = calculer(ops, ENVELOPPES_DEFAUT, '2026-11-04', 'semaine');
-  const e = Object.fromEntries(s.enveloppes.map((x) => [x.id, x]));
-  assert.strictEqual(e.courses.depense, 30);
-  assert.strictEqual(e.courses.reste, 12);
-  assert.strictEqual(e.courses.etat, 'orange'); // 71 % utilisés après 3 jours sur 7 : trop vite
-  assert.strictEqual(e.resto.depense, 12); // l'Uber Eats de dimanche est sur la semaine d'avant
-  assert.strictEqual(e.resto.etat, 'vert');
-  assert.deepStrictEqual(e.resto.plafond, { nom: 'Uber Eats', budget: 26, depense: 24, reste: 2, etat: 'orange' }); // sur le mois
-  assert.strictEqual(e.libres.etat, 'rouge'); // 20 € pour 9 €
-  assert.strictEqual(e.fixes.mensuelle, true);
-  assert.strictEqual(e.fixes.depense, 10);
-  // Le chiffre principal ne compte que les enveloppes de la semaine.
-  assert.strictEqual(s.budget, 101);
-  assert.strictEqual(s.reste, 101 - 30 - 12 - 20);
-  assert.strictEqual(s.joursRestants, 5);
-  assert.strictEqual(s.alertes[0].etat, 'rouge');
-  assert.ok(s.alertes.some((a) => a.texte.startsWith('Uber Eats : 92 % utilisés')), JSON.stringify(s.alertes));
-
-  const m = calculer(ops, ENVELOPPES_DEFAUT, '2026-11-04', 'mois');
-  const em = Object.fromEntries(m.enveloppes.map((x) => [x.id, x]));
-  assert.strictEqual(em.courses.budget, 180); // 42 € × 30 jours / 7
-  assert.strictEqual(em.resto.depense, 36);
-  assert.strictEqual(m.budget, 454.86); // 180 + 214,29 + 38,57 + 22
-  assert.strictEqual(budgetMensuel(ENVELOPPES_DEFAUT), 459.67); // 182 + 216,67 + 39 + 22 : tient dans 460 €
-});
-
-test('enveloppes : plafond à 0 € sans dépense = pas d’alerte', () => {
-  const { ENVELOPPES_DEFAUT, calculer } = require('./enveloppes');
-  const config = structuredClone(ENVELOPPES_DEFAUT);
-  config[1].plafond.parMois = 0;
-  const s = calculer([], config, '2026-11-04', 'semaine');
-  assert.strictEqual(s.enveloppes[1].plafond.etat, 'vert');
-  assert.deepStrictEqual(s.alertes, []);
-  const u = calculer([{ date: '2026-11-03 20:00:00', description: 'Uber Eats', montant: -20, categorie: 'Restos & fast-food' }], config, '2026-11-04', 'semaine');
-  assert.strictEqual(u.enveloppes[1].plafond.etat, 'rouge');
+  // Chaque catégorie de dépense est dans une seule enveloppe.
+  const { CATEGORIES, HORS_DEPENSES } = require('./categories');
+  const rangees = ENVELOPPES_DEFAUT.flatMap((e) => e.categories);
+  assert.strictEqual(new Set(rangees).size, rangees.length);
+  assert.deepStrictEqual(CATEGORIES.filter((c) => !HORS_DEPENSES.includes(c) && !rangees.includes(c)), []);
 });
 
 test('ajout rapide : saisie à la main, « à rembourser », remplacée par la ligne du relevé', async (t) => {
@@ -422,10 +361,14 @@ test('rapprochement : à rembourser, virement reçu, revenus sûrs et entrées v
   const bistrot = await trouve('Le Bistrot');
   const lea = await trouve('Payment from Lea Martin');
   await appel('PATCH', `/api/operations/${bistrot.id}`, { categorie: 'Restos & fast-food' });
-  const resto = async () => (await appel('GET', '/api/accueil?vue=mois')).json.enveloppes.find((e) => e.id === 'resto').depense;
-  const revenus = async () => (await appel('GET', '/api/accueil')).json.revenus;
+  const mois = auj.slice(0, 7);
+  const tableau = async () => (await appel('GET', `/api/tableau?mois=${mois}`)).json;
+  const resto = async () => (await tableau()).categories.find((c) => c.categorie === 'Restos & fast-food')?.montant ?? 0;
+  const entrees = async () => (await tableau()).entrees;
+  const aRecuperer = async () => arrondi2((await appel('GET', '/api/a-rembourser')).json.reduce((s, o) => s + o.reste, 0));
   const resto0 = await resto();
-  const avant = await revenus();
+  const entrees0 = await entrees();
+  const recuperer0 = await aRecuperer();
 
   // J'avance 40 € ; on me doit 20 €.
   assert.strictEqual((await appel('PATCH', `/api/operations/${bistrot.id}`, { aRembourser: 50 })).status, 400); // plus que la dépense
@@ -433,30 +376,29 @@ test('rapprochement : à rembourser, virement reçu, revenus sûrs et entrées v
   assert.strictEqual((await appel('PATCH', `/api/operations/${lea.id}`, { aRembourser: true })).status, 400); // une entrée n'est pas une avance
   const ouvertes = (await appel('GET', '/api/a-rembourser')).json;
   assert.deepStrictEqual(ouvertes.find((o) => o.id === bistrot.id), { id: bistrot.id, date: bistrot.date, description: 'Le Bistrot', montant: -40, attendu: 20, reste: 20 });
-  assert.strictEqual((await revenus()).aRecuperer, arrondi2(avant.aRecuperer + 20));
+  assert.strictEqual(await aRecuperer(), arrondi2(recuperer0 + 20));
 
   // Léa m'envoie 25 € : 20 € remboursent le resto, 5 € restent une entrée variable.
   const r = await appel('POST', `/api/operations/${lea.id}/rapprocher`, { depense: bistrot.id });
   assert.deepStrictEqual(r.json, { montant: 20, reste: 0 });
   assert.strictEqual((await appel('POST', `/api/operations/${lea.id}/rapprocher`, { depense: bistrot.id })).status, 400); // déjà tout reçu
   assert.strictEqual(await resto(), arrondi2(resto0 - 20)); // dépense nette
-  const apres = await revenus();
-  assert.strictEqual(apres.aRecuperer, avant.aRecuperer);
-  assert.strictEqual(apres.variables, arrondi2(avant.variables - 20)); // le remboursement n'est pas une entrée
+  assert.strictEqual(await aRecuperer(), recuperer0);
+  assert.strictEqual(await entrees(), arrondi2(entrees0 - 20)); // le remboursement n'est pas une entrée
   assert.deepStrictEqual((await trouve('Payment from Lea Martin')).affectations, [{ montant: 20, description: 'Le Bistrot' }]);
   assert.strictEqual((await trouve('Le Bistrot')).recu, 20);
 
   // Les parents : revenu sûr.
-  assert.strictEqual(apres.surs, 0);
+  assert.strictEqual((await trouve('Payment from Papa Dupont')).revenuSur, false);
   await appel('POST', '/api/sources-revenus', { motCle: 'Papa Dupont' });
-  const surs = await revenus();
-  assert.deepStrictEqual([surs.surs, surs.variables, surs.sourcesConfigurees], [400, arrondi2(apres.variables - 400), true]);
+  assert.strictEqual((await trouve('Payment from Papa Dupont')).revenuSur, true);
+  assert.strictEqual((await trouve('Payment from Lea Martin')).revenuSur, false);
 
   // Annuler le rapprochement : tout revient comme avant.
   await appel('DELETE', `/api/operations/${lea.id}/rapprocher`);
   assert.strictEqual(await resto(), resto0);
   await appel('DELETE', '/api/sources-revenus?motCle=papa%20dupont');
-  assert.strictEqual((await revenus()).surs, 0);
+  assert.strictEqual((await trouve('Payment from Papa Dupont')).revenuSur, false);
 });
 
 function arrondi2(x) { return Math.round(x * 100) / 100; }
