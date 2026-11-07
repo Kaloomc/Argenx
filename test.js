@@ -605,6 +605,21 @@ test('reste à dépenser et épargne à reconstituer : routes', async (t) => {
   const tableau = (await appel('GET', `/api/tableau?mois=${mois}`)).json;
   assert.strictEqual(tableau.reste.disponible, accueil.resteMois.disponible);
   assert.ok(!('evolution' in tableau) && !('comparaison' in tableau) && !('inhabituelles' in tableau)); // plus de vue multi-mois
+
+  // Reste par catégorie (accueil) : seulement les catégories avec budget, et ce qui est dépensé ailleurs.
+  await appel('PUT', '/api/budgets', { budgets: { Courses: 140, 'Restos & fast-food': 40 }, mensuel: 400 });
+  const avantCat = (await appel('GET', '/api/accueil')).json.resteMois;
+  assert.deepStrictEqual(avantCat.categories.map((c) => c.categorie), ['Courses', 'Restos & fast-food']);
+  await appel('POST', '/api/operations', { montant: 57.6, description: 'Utile', categorie: 'Courses' });
+  await appel('POST', '/api/operations', { montant: 10, description: 'Divers', categorie: 'Autres' });
+  const apresCat = (await appel('GET', '/api/accueil')).json.resteMois;
+  const courses = (r) => r.categories.find((c) => c.categorie === 'Courses');
+  assert.strictEqual(courses(apresCat).budget, 140);
+  assert.strictEqual(courses(apresCat).depense, Math.round((courses(avantCat).depense + 57.6) * 100) / 100);
+  assert.strictEqual(courses(apresCat).reste, Math.round((140 - courses(apresCat).depense) * 100) / 100);
+  assert.strictEqual(apresCat.sansBudget, Math.round((avantCat.sansBudget + 10) * 100) / 100);
+  await appel('PUT', '/api/budgets', { budgets: {}, mensuel: 400 });
+  assert.deepStrictEqual((await appel('GET', '/api/accueil')).json.resteMois.categories, []);
 });
 
 test('widget : GET /api/widget/argent', async (t) => {

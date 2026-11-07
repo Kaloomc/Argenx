@@ -194,6 +194,7 @@ function resteDuMois(mois) {
   const disponible = enveloppe == null ? null : arrondi(enveloppe - aRemettre);
   const r = analyses.rythme(ops, mois, disponible, jusquau());
   const categories = analyses.resumeMois(ops, mois, reglages.budgets).categories;
+  const parBudget = categories.filter((c) => c.budget);
   const totalBudgets = arrondi(Object.values(reglages.budgets).reduce((s, v) => s + v, 0));
   // Jours restants : aujourd'hui compris, comme dans le widget (pour le mois en cours).
   const jour = aujourdhui();
@@ -206,6 +207,9 @@ function resteDuMois(mois) {
     epargneMise: Math.max(0, analyses.resumeMois(ops, mois).epargne), // déjà mis de côté ce mois-ci (pour les Réglages)
     budgets: { total: totalBudgets, depasse: disponible != null && totalBudgets > disponible + 0.005 },
     phrases: analyses.phrases(categories, r),
+    // Reste par catégorie qui a un budget (pour l'accueil), et ce qui est dépensé hors de ces catégories.
+    categories: parBudget.map((c) => ({ categorie: c.categorie, budget: c.budget, depense: c.montant, reste: arrondi(c.budget - c.montant) })),
+    sansBudget: arrondi(r.depense - parBudget.reduce((somme, c) => somme + c.montant, 0)),
   };
 }
 

@@ -211,3 +211,16 @@ strong.orange { color: var(--orange); }
 .aide-geste { margin-bottom: 8px; }
 .aide-geste summary { min-height: 44px; }
 @media (min-width: 480px) { .grille-choix { grid-template-columns: repeat(4, 1fr); } }
+/* Reste par catégorie (accueil) */
+.cat-reste { gap: 4px 8px; }
+.cat-reste .reste { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.cat-reste .bas { flex-basis: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .8rem; color: var(--doux); }
+.cat-reste .bas .ico { width: 1em; height: 1em; }
+.cat-reste.etat-vert .barre div { background: var(--vert); }
+.cat-reste.etat-orange .barre div { background: var(--orange); }
+.cat-reste.etat-rouge .barre div { background: var(--rouge); }
+.cat-reste.etat-vert .reste { color: var(--vert); }
+.cat-reste.etat-orange .reste { color: var(--orange); }
+.cat-reste.etat-rouge .reste { color: var(--rouge); }
+.cat-reste.etat-rouge .bas span:last-child { color: var(--rouge); }
+.cat-reste.etat-orange .bas span:last-child { color: var(--orange); }

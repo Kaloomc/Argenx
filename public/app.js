@@ -118,9 +118,29 @@ function htmlReste(r) {
 const ETAT_ICONE = { orange: ico('alerte'), rouge: ico('stop') };
 const htmlAlerte = (x) => `<li class="${x.etat}">${ETAT_ICONE[x.etat]}<span>${esc(x.texte)}</span></li>`;
 
+// Ce qu'il reste à dépenser dans chaque catégorie qui a un budget (Réglages), la plus entamée d'abord.
+function htmlCategories(r) {
+  if (r.disponible == null) return '';
+  if (!r.categories.length) {
+    return '<div class="carte"><h3>Par catégorie</h3><p class="aide">Fixe un budget par catégorie dans Réglages (le bouton « Remplir avec la proposition » donne un point de départ) pour voir ce qu\'il reste dans chacune.</p></div>';
+  }
+  const lignes = [...r.categories].sort((a, b) => b.depense / b.budget - a.depense / a.budget).map((c) => {
+    const part = c.depense / c.budget;
+    const etat = c.reste < 0 ? 'rouge' : part >= 0.8 ? 'orange' : 'vert';
+    const texte = c.reste < 0 ? `${ico('stop')} dépassé de ${euros0(-c.reste)}` : part >= 0.8 ? `${ico('alerte')} presque épuisé` : 'ça tient';
+    return `<li class="cat-reste etat-${etat}">
+      <span class="nom">${esc(c.categorie)}</span><strong class="reste">${euros0(c.reste)}</strong>
+      ${barre(c.depense, c.budget)}
+      <span class="bas"><span>${euros0(c.depense)} sur ${euros0(c.budget)}</span><span>${texte}</span></span></li>`;
+  }).join('');
+  const sans = r.sansBudget > 0.5 ? `<p class="aide">Hors de ces catégories : ${euros0(r.sansBudget)} dépensés ce mois-ci.</p>` : '';
+  return `<div class="carte"><h3>Par catégorie</h3><ul class="liste">${lignes}</ul>${sans}</div>`;
+}
+
 async function chargerAccueil() {
   const a = await api('/api/accueil');
   $('#reste-mois').innerHTML = htmlReste(a.resteMois);
+  $('#reste-categories').innerHTML = htmlCategories(a.resteMois);
   const hier = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE');
   $('#fraicheur').textContent = a.jusquau < hier
     ? `Dépenses connues jusqu'au ${jourCourt(a.jusquau)}. Importe ton relevé Revolut (onglet Importer) pour être à jour.`
