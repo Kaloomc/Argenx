@@ -160,6 +160,11 @@ Remboursé **en partie** (par exemple un ami qui te rend sa moitié) : mets la s
 
 À fixer dans Réglages (le bouton « Remplir avec la proposition » donne un point de départ de 283 €). Dans Insights, la liste des catégories montre le budget en repère, et la barre passe au rouge en cas de dépassement.
 
+## Logo et icônes
+
+Le logo est à plat, en 2 couleurs de l'appli (fond sombre `#121214`, accent sombre `#8c9eff`) : une jauge de budget (arc ouvert) et une pièce. Il est dessiné dans `public/icons/icon.svg` (et `favicon.svg` pour les très petites tailles). Les PNG (icône 192 et 512 à coins arrondis, « maskable » et apple-touch-icon en carré plein, favicon 48) se régénèrent avec `node scripts/export-icones.js`, qui pilote un Chrome déjà installé (variable `CHROME` pour le préciser). L'appli n'en a pas besoin pour tourner. Aperçu avant/après : [docs/logo-apercu.png](docs/logo-apercu.png).
+Après un changement d'icône, change `CACHE` dans `public/sw.js` et le `?v=` dans `manifest.json` et `index.html`. L'iPhone garde l'ancienne icône tant que l'appli n'est pas retirée de l'écran d'accueil puis réinstallée.
+
 ## Limites connues
 
 - Seulement les opérations en **euros** ; un relevé par compte Revolut en euros.

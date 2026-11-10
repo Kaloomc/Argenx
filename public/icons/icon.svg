@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Logo Argenx, 100 % à plat : 2 couleurs de l'appli (fond sombre #121214, accent sombre #8c9eff).
+       Une jauge de budget (arc ouvert, bouts arrondis, même épaisseur de trait que les icônes de l'interface) et une pièce.
+       Fichier maître : les PNG se génèrent avec `node scripts/export-icones.js`. Carré plein (le masque arrondi est posé à l'export). -->
+  <rect width="512" height="512" fill="#121214"/>
+  <g transform="translate(0 14)"><!-- recentrage optique : l'arc ouvert en bas fait paraître le symbole trop haut -->
+  <path d="M149.9 362.1A150 150 0 1 1 406 256" fill="none" stroke="#8c9eff" stroke-width="48" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="40" fill="#8c9eff"/>
+  </g>
+</svg>
